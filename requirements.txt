@@ -2,7 +2,7 @@
 tensorflow==2.18.0
 numpy==2.0.2
 Pillow==11.0.0
-opencv-python==4.10.0.84
+opencv-python-headless==4.10.0.84
 joblib==1.4.2
 
 # Web Application
