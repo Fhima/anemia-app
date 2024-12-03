@@ -15,29 +15,52 @@ def detect_conjunctiva(image):
     image_array = np.array(image)
     original = image_array.copy()
     
+    # Enhanced HSV range for conjunctiva
     hsv = cv2.cvtColor(image_array, cv2.COLOR_RGB2HSV)
-    lower_red = np.array([0, 30, 60])
-    upper_red = np.array([20, 150, 255])
+    lower_red = np.array([0, 20, 50])
+    upper_red = np.array([20, 180, 255])
     
     mask = cv2.inRange(hsv, lower_red, upper_red)
     
-    kernel = np.ones((5,5), np.uint8)
+    # Improved morphological operations
+    kernel = np.ones((3,3), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
     
+    # Find and filter contours
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     if not contours:
         return None, None
+        
+    # Filter contours by size and position
+    valid_contours = []
+    height, width = image_array.shape[:2]
+    min_area = (width * height) * 0.05
+    max_area = (width * height) * 0.4
     
-    largest_contour = max(contours, key=cv2.contourArea)
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if min_area < area < max_area:
+            x, y, w, h = cv2.boundingRect(cnt)
+            # Check if contour is in middle third of image
+            if y > height/3 and y < 2*height/3:
+                valid_contours.append(cnt)
+    
+    if not valid_contours:
+        return None, None
+    
+    # Select largest valid contour
+    largest_contour = max(valid_contours, key=cv2.contourArea)
     x, y, w, h = cv2.boundingRect(largest_contour)
     
-    padding = 20
-    y_start = max(0, y - padding)
-    y_end = min(image_array.shape[0], y + h + padding)
-    x_start = max(0, x - padding)
-    x_end = min(image_array.shape[1], x + w + padding)
+    # Dynamic padding based on region size
+    padding_x = int(w * 0.1)
+    padding_y = int(h * 0.2)
+    y_start = max(0, y - padding_y)
+    y_end = min(image_array.shape[0], y + h + padding_y)
+    x_start = max(0, x - padding_x)
+    x_end = min(image_array.shape[1], x + w + padding_x)
     
     conjunctiva_region = original[y_start:y_end, x_start:x_end]
     vis_image = original.copy()
