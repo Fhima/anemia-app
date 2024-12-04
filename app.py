@@ -28,38 +28,35 @@ face_mesh = load_face_mesh()
 
 def detect_conjunctiva(image):
     try:
-        # Convert to RGB
         image = image.convert('RGB')
         image_array = np.array(image)
+        st.write("Image shape:", image_array.shape)
         
-        # Convert to HSV for better color segmentation
         hsv = cv2.cvtColor(image_array, cv2.COLOR_RGB2HSV)
         
-        # Define range for reddish/pink color of conjunctiva
-        lower_red = np.array([0, 30, 60])
-        upper_red = np.array([20, 180, 255])
+        # Broader range for conjunctiva color
+        lower_red = np.array([0, 20, 50])
+        upper_red = np.array([30, 255, 255])
         
-        # Create mask
         mask = cv2.inRange(hsv, lower_red, upper_red)
+        st.image(mask, caption="Mask")  # Display mask for debugging
         
-        # Find contours
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        st.write("Number of contours found:", len(contours))
         
         if not contours:
             return None, None
             
-        # Get largest contour
         largest_contour = max(contours, key=cv2.contourArea)
         x, y, w, h = cv2.boundingRect(largest_contour)
+        st.write("ROI dimensions:", w, "x", h)
         
-        # Add padding
-        padding = 10
+        padding = 20
         x = max(0, x - padding)
         y = max(0, y - padding)
         w = min(image_array.shape[1] - x, w + 2*padding)
         h = min(image_array.shape[0] - y, h + 2*padding)
         
-        # Extract region and create visualization
         conjunctiva_region = image_array[y:y+h, x:x+w]
         vis_image = image_array.copy()
         cv2.rectangle(vis_image, (x, y), (x+w, y+h), (0, 255, 0), 2)
