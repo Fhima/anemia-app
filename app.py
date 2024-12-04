@@ -4,67 +4,71 @@ import numpy as np
 from PIL import Image
 from tensorflow.keras.preprocessing.image import img_to_array
 import cv2
+import mediapipe as mp
 
+# Initialize session state
 if 'prediction_made' not in st.session_state:
     st.session_state.prediction_made = False
 if 'conjunctiva_region' not in st.session_state:
     st.session_state.conjunctiva_region = None
 
+# Initialize MediaPipe Face Mesh
+@st.cache_resource
+def load_face_mesh():
+    return mp.solutions.face_mesh.FaceMesh(
+        max_num_faces=1,
+        refine_landmarks=True,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5
+    )
+
+face_mesh = load_face_mesh()
+
 def detect_conjunctiva(image):
+    # Convert PIL to numpy array
     image = image.convert('RGB')
     image_array = np.array(image)
-    original = image_array.copy()
+    height, width = image_array.shape[:2]
     
-    # Enhanced HSV range for conjunctiva
-    hsv = cv2.cvtColor(image_array, cv2.COLOR_RGB2HSV)
-    lower_red = np.array([0, 20, 50])
-    upper_red = np.array([20, 180, 255])
+    # Detect landmarks
+    results = face_mesh.process(image_array)
     
-    mask = cv2.inRange(hsv, lower_red, upper_red)
-    
-    # Improved morphological operations
-    kernel = np.ones((3,3), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-    
-    # Find and filter contours
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    if not contours:
+    if not results.multi_face_landmarks:
         return None, None
         
-    # Filter contours by size and position
-    valid_contours = []
-    height, width = image_array.shape[:2]
-    min_area = (width * height) * 0.05
-    max_area = (width * height) * 0.4
+    # Get lower eyelid landmarks
+    face_landmarks = results.multi_face_landmarks[0]
     
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if min_area < area < max_area:
-            x, y, w, h = cv2.boundingRect(cnt)
-            # Check if contour is in middle third of image
-            if y > height/3 and y < 2*height/3:
-                valid_contours.append(cnt)
+    # Lower eyelid indices for right eye
+    lower_eye_indices = [33, 7, 163, 144, 145, 153, 154, 155, 133]
     
-    if not valid_contours:
-        return None, None
+    # Extract coordinates
+    lower_eye_points = []
+    for idx in lower_eye_indices:
+        point = face_landmarks.landmark[idx]
+        x, y = int(point.x * width), int(point.y * height)
+        lower_eye_points.append((x, y))
     
-    # Select largest valid contour
-    largest_contour = max(valid_contours, key=cv2.contourArea)
-    x, y, w, h = cv2.boundingRect(largest_contour)
+    # Create bounding box
+    x_coords = [p[0] for p in lower_eye_points]
+    y_coords = [p[1] for p in lower_eye_points]
     
-    # Dynamic padding based on region size
-    padding_x = int(w * 0.1)
-    padding_y = int(h * 0.2)
-    y_start = max(0, y - padding_y)
-    y_end = min(image_array.shape[0], y + h + padding_y)
-    x_start = max(0, x - padding_x)
-    x_end = min(image_array.shape[1], x + w + padding_x)
+    x_min, x_max = min(x_coords), max(x_coords)
+    y_min, y_max = min(y_coords), max(y_coords)
     
-    conjunctiva_region = original[y_start:y_end, x_start:x_end]
-    vis_image = original.copy()
-    cv2.rectangle(vis_image, (x_start, y_start), (x_end, y_end), (0, 255, 0), 2)
+    # Add padding
+    padding = int(width * 0.05)
+    x_min = max(0, x_min - padding)
+    y_min = max(0, y_min - padding)
+    x_max = min(width, x_max + padding)
+    y_max = min(height, y_max + padding)
+    
+    # Extract region
+    conjunctiva_region = image_array[y_min:y_max, x_min:x_max]
+    
+    # Create visualization
+    vis_image = image_array.copy()
+    cv2.rectangle(vis_image, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
     
     return Image.fromarray(conjunctiva_region), Image.fromarray(vis_image)
 
@@ -76,7 +80,7 @@ def preprocess_image(image):
         img = Image.open(image)
     else:
         img = image
-    img = img.resize((160, 160))  # Match your model's input size
+    img = img.resize((160, 160))
     img = img.convert('RGB')
     img_array = img_to_array(img)
     img_array = tf.keras.applications.efficientnet_v2.preprocess_input(img_array)
@@ -89,76 +93,115 @@ def predict_anemia(model, image):
     confidence = abs(prediction[0][0] - 0.5) * 2
     return prediction[0][0] > 0.5, confidence
 
+# App UI
 st.set_page_config(page_title="Anemia Detection", layout="wide")
 
-st.title('🔍 Anemia Detection System')
-st.markdown("""
-This system analyzes conjunctival images to detect potential anemia. Upload a clear photo of your eye's 
-inner lower eyelid (conjunctiva) for analysis.
-""")
-
-# Load model
-model = load_model()
-
-# Image upload with custom styling
+# Custom styling
 st.markdown("""
 <style>
+    .main {
+        padding: 2rem;
+    }
     .uploadedFile {
-        border: 2px dashed #4e8df5;
-        border-radius: 10px;
-        padding: 20px;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 1rem;
+        background-color: #fafafa;
     }
     .stAlert {
-        border-radius: 10px;
+        border-radius: 4px;
+    }
+    .stButton>button {
+        background-color: #2E4053;
+        color: white;
+        border-radius: 4px;
+        padding: 0.5rem 2rem;
+    }
+    h1 {
+        color: #2E4053;
+        font-size: 2.5rem;
+        margin-bottom: 1.5rem;
+    }
+    h3 {
+        color: #34495E;
+        margin-top: 2rem;
+    }
+    .results-card {
+        padding: 1.5rem;
+        border-radius: 4px;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        margin: 1rem 0;
     }
 </style>
 """, unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("📤 Upload Eye Image", type=['jpg', 'jpeg', 'png'])
+st.title('Anemia Detection System')
+st.markdown("""
+<div style='background-color: #f8f9fa; padding: 1rem; border-radius: 4px; margin-bottom: 2rem;'>
+This medical screening tool analyzes conjunctival images to assess potential anemia. 
+Upload a clear photograph of the inner lower eyelid (conjunctiva) for analysis.
+</div>
+""", unsafe_allow_html=True)
+
+# Load model
+model = load_model()
+
+uploaded_file = st.file_uploader("Upload Eye Image", type=['jpg', 'jpeg', 'png'])
 
 if uploaded_file:
     image = Image.open(uploaded_file)
     conjunctiva_region, detection_vis = detect_conjunctiva(image)
     
     if conjunctiva_region is None:
-        st.error("❌ Could not detect conjunctival region. Please ensure the inner eyelid is clearly visible.")
+        st.error("Detection failed. Please ensure the eye is clearly visible in the image.")
     else:
+        st.markdown("<h3>Image Analysis</h3>", unsafe_allow_html=True)
         col1, col2 = st.columns(2)
         with col1:
-            st.image(detection_vis, caption='Detected Region', use_container_width=True)
+            st.image(detection_vis, caption='Region of Interest', use_container_width=True)
         with col2:
-            st.image(conjunctiva_region, caption='Extracted Conjunctiva', use_container_width=True)
+            st.image(conjunctiva_region, caption='Processed Region', use_container_width=True)
         
         st.session_state.conjunctiva_region = conjunctiva_region
         
-        if st.button("✅ Confirm and Analyze", type="primary"):
+        if st.button("Analyze Image", type="primary"):
             st.session_state.prediction_made = True
 
         if st.session_state.prediction_made:
             try:
-                with st.spinner('🔄 Analyzing...'):
+                with st.spinner('Processing image...'):
                     is_anemic, confidence = predict_anemia(model, st.session_state.conjunctiva_region)
                     
-                    st.subheader('📊 Results')
-                    if is_anemic:
-                        st.error(f'⚠️ Potential Anemia Detected (Confidence: {confidence:.1%})')
-                    else:
-                        st.success(f'✅ No Anemia Detected (Confidence: {confidence:.1%})')
+                    st.markdown("<h3>Analysis Results</h3>", unsafe_allow_html=True)
                     
-                    st.warning('⚕️ Note: This is a screening tool only. Please consult a healthcare professional for proper diagnosis.')
+                    if is_anemic:
+                        st.error(f'Potential anemia detected with {confidence:.1%} confidence')
+                    else:
+                        st.success(f'No indication of anemia (confidence: {confidence:.1%})')
+                    
+                    st.warning('This is a screening tool only and should not replace professional medical diagnosis.')
             except Exception as e:
-                st.error(f'❌ Error during analysis: {str(e)}')
+                st.error(f'An error occurred during analysis: {str(e)}')
                 st.session_state.prediction_made = False
 
 st.markdown("""
-### 📋 Instructions
-1. Take a clear photo showing your lower inner eyelid (conjunctiva)
-2. Upload the image and verify the detected region
-3. Click 'Confirm and Analyze' for results
+<h3>Usage Instructions</h3>
+<div class='results-card'>
+<ol>
+<li>Capture a clear photograph of the lower inner eyelid</li>
+<li>Verify the detected region in the preview</li>
+<li>Proceed with analysis</li>
+</ol>
+</div>
 
-### 📸 Tips for Good Images
-- Ensure good lighting
-- Pull down lower eyelid to expose inner surface
-- Keep eye open and steady
-- Avoid glare or shadows
-""")
+<h3>Image Quality Guidelines</h3>
+<div class='results-card'>
+<ul>
+<li>Use consistent, adequate lighting</li>
+<li>Ensure clear visibility of the inner eyelid surface</li>
+<li>Maintain steady positioning during capture</li>
+<li>Minimize reflections and shadows</li>
+</ul>
+</div>
+""", unsafe_allow_html=True)
