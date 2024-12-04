@@ -1,6 +1,7 @@
 import streamlit as st
 st.set_page_config(page_title="Anemia Detection", layout="wide")
 
+import os
 import tensorflow as tf
 import numpy as np
 from PIL import Image
