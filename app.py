@@ -21,16 +21,16 @@ def detect_conjunctiva(image):
         
         hsv = cv2.cvtColor(image_array, cv2.COLOR_RGB2HSV)
         
-        # Pink/red conjunctiva detection
+        # Keep same color range
         lower_red = np.array([0, 50, 160])
         upper_red = np.array([10, 200, 255])
         mask = cv2.inRange(hsv, lower_red, upper_red)
         
-        # Focus on middle region with wider width
+        # Increase detection area
         y_min = int(height * 0.35)
         y_max = int(height * 0.65)
-        x_min = int(width * 0.15)  # Wider horizontal range
-        x_max = int(width * 0.85)
+        x_min = int(width * 0.2)  # Wider area
+        x_max = int(width * 0.8)
         
         mask[:y_min, :] = 0
         mask[y_max:, :] = 0
@@ -42,16 +42,15 @@ def detect_conjunctiva(image):
         if not contours:
             return None, None
             
-        # Get central contour
-        center_y = height // 2
+        # Get largest contour in region
         largest_contour = max(contours, key=cv2.contourArea)
         x, y, w, h = cv2.boundingRect(largest_contour)
         
-        # Adjust crop to be wider but less tall
-        x = max(x_min, x - w//10)
-        w = min(x_max - x, int(w * 1.2))
-        y = max(y_min, y - h//8)
-        h = min(y_max - y, int(h * 1.1))
+        # More generous cropping
+        x = max(x_min, x - w//4)  # More padding
+        w = min(x_max - x, int(w * 1.5))  # Wider crop
+        y = max(y_min, y - h//4)
+        h = min(y_max - y, int(h * 1.5))
         
         return (Image.fromarray(image_array[y:y+h, x:x+w]), 
                 Image.fromarray(cv2.rectangle(image_array.copy(), (x,y), (x+w,y+h), (0,255,0), 2)))
