@@ -19,8 +19,9 @@ def load_face_mesh():
     return mp.solutions.face_mesh.FaceMesh(
         max_num_faces=1,
         refine_landmarks=True,
-        min_detection_confidence=0.3,
-        min_tracking_confidence=0.3
+        min_detection_confidence=0.1,  # Lowered threshold
+        min_tracking_confidence=0.1,   # Lowered threshold
+        static_image_mode=True        # Added for single images
     )
 
 face_mesh = load_face_mesh()
@@ -31,11 +32,21 @@ def detect_conjunctiva(image):
         image_array = np.array(image)
         height, width = image_array.shape[:2]
         
+        # Add debug info
+        st.write(f"Image shape: {image_array.shape}")
+        
         results = face_mesh.process(image_array)
         
         if not results.multi_face_landmarks:
-            st.warning("Eye landmarks not detected. Please ensure the eye is clearly visible.")
-            return None, None
+            st.write("No landmarks detected - trying with larger image")
+            # Try scaling up image
+            image_large = image.resize((width*2, height*2), Image.Resampling.LANCZOS)
+            image_array_large = np.array(image_large)
+            results = face_mesh.process(image_array_large)
+            
+            if not results.multi_face_landmarks:
+                st.warning("Eye landmarks not detected even with scaling.")
+                return None, None
         
         # Lower eyelid landmarks
         lower_eye_indices = [33, 7, 163, 144, 145, 153, 154, 155, 133]
