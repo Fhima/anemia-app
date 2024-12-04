@@ -21,26 +21,37 @@ def detect_conjunctiva(image):
         
         hsv = cv2.cvtColor(image_array, cv2.COLOR_RGB2HSV)
         
-        # More refined conjunctiva color range
-        lower_red = np.array([0, 40, 180])
-        upper_red = np.array([10, 190, 255])
+        # Refined pink/red range
+        lower_red = np.array([0, 60, 140])
+        upper_red = np.array([10, 230, 255])
         mask = cv2.inRange(hsv, lower_red, upper_red)
         
-        # Target central area
-        y_center = int(height * 0.5)
-        x_center = int(width * 0.5)
-        target_h = int(height * 0.2)
-        target_w = int(width * 0.2)
+        # Focus on central region
+        y_min = int(height * 0.3)
+        y_max = int(height * 0.7)
+        x_min = int(width * 0.1)
+        x_max = int(width * 0.9)
         
-        y = y_center - target_h//2
-        x = x_center - target_w//2
+        mask[:y_min, :] = 0
+        mask[y_max:, :] = 0
+        mask[:, :x_min] = 0
+        mask[:, x_max:] = 0
         
-        roi = image_array[y:y+target_h, x:x+target_w]
+        # Find largest pink region
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        return (Image.fromarray(roi), 
-                Image.fromarray(cv2.rectangle(image_array.copy(), 
-                                           (x,y), (x+target_w,y+target_h), 
-                                           (0,255,0), 2)))
+        if not contours:
+            return None, None
+            
+        largest_contour = max(contours, key=cv2.contourArea)
+        x, y, w, h = cv2.boundingRect(largest_contour)
+        
+        # Crop tighter around conjunctiva
+        y = max(y_min, y - h//8)
+        h = min(y_max - y, int(h * 1.1))
+        
+        return (Image.fromarray(image_array[y:y+h, x:x+w]), 
+                Image.fromarray(cv2.rectangle(image_array.copy(), (x,y), (x+w,y+h), (0,255,0), 2)))
     except Exception as e:
         st.write("Error:", str(e))
         return None, None
