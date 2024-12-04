@@ -21,22 +21,25 @@ def detect_conjunctiva(image):
         
         hsv = cv2.cvtColor(image_array, cv2.COLOR_RGB2HSV)
         
-        # Pink/red conjunctiva detection
-        lower_red = np.array([0, 50, 100])
-        upper_red = np.array([10, 200, 255])
+        # Focus more on pink/red tones
+        lower_red = np.array([0, 70, 120])
+        upper_red = np.array([10, 255, 255])
         mask = cv2.inRange(hsv, lower_red, upper_red)
         
-        kernel = np.ones((5,5), np.uint8)
+        kernel = np.ones((3,3), np.uint8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
         
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        # Fixed size thresholds
-        min_area = 1000  # Minimum pixel area
-        max_area = width * height * 0.8  # Maximum 80% of image
+        # Only look at bottom half of image for conjunctiva
+        min_area = 500
+        max_area = width * height * 0.3
+        y_threshold = height * 0.5
         
-        valid_contours = [c for c in contours if min_area < cv2.contourArea(c) < max_area]
+        valid_contours = [c for c in contours if 
+                         min_area < cv2.contourArea(c) < max_area and
+                         cv2.boundingRect(c)[1] > y_threshold]
         
         if not valid_contours:
             return None, None
@@ -44,7 +47,8 @@ def detect_conjunctiva(image):
         largest_contour = max(valid_contours, key=cv2.contourArea)
         x, y, w, h = cv2.boundingRect(largest_contour)
         
-        padding = int(min(w, h) * 0.1)
+        # Tighter padding
+        padding = int(min(w, h) * 0.05)
         x = max(0, x - padding)
         y = max(0, y - padding)
         w = min(width - x, w + 2*padding)
@@ -56,7 +60,6 @@ def detect_conjunctiva(image):
     except Exception as e:
         st.write("Error:", str(e))
         return None, None
-
 def load_model():
    return tf.keras.models.load_model('models/final_anemia_model.keras')
 
