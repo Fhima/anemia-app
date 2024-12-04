@@ -1,4 +1,6 @@
 import streamlit as st
+st.set_page_config(page_title="Anemia Detection", layout="wide")
+
 import tensorflow as tf
 import numpy as np
 from PIL import Image
@@ -93,8 +95,6 @@ def predict_anemia(model, image):
     confidence = abs(prediction[0][0] - 0.5) * 2
     return prediction[0][0] > 0.5, confidence
 
-# App UI
-st.set_page_config(page_title="Anemia Detection", layout="wide")
 
 # Custom styling
 st.markdown("""
