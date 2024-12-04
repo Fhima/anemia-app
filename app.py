@@ -21,40 +21,26 @@ def detect_conjunctiva(image):
         
         hsv = cv2.cvtColor(image_array, cv2.COLOR_RGB2HSV)
         
-        # Target central conjunctiva color
-        lower_red = np.array([0, 50, 160])
-        upper_red = np.array([10, 200, 255])
+        # More refined conjunctiva color range
+        lower_red = np.array([0, 40, 180])
+        upper_red = np.array([10, 190, 255])
         mask = cv2.inRange(hsv, lower_red, upper_red)
         
-        # Focus on center region
-        y_min = int(height * 0.35)
-        y_max = int(height * 0.65)
-        x_min = int(width * 0.3)
-        x_max = int(width * 0.7)
+        # Target central area
+        y_center = int(height * 0.5)
+        x_center = int(width * 0.5)
+        target_h = int(height * 0.2)
+        target_w = int(width * 0.2)
         
-        mask[:y_min, :] = 0
-        mask[y_max:, :] = 0
-        mask[:, :x_min] = 0
-        mask[:, x_max:] = 0
+        y = y_center - target_h//2
+        x = x_center - target_w//2
         
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        roi = image_array[y:y+target_h, x:x+target_w]
         
-        if not contours:
-            return None, None
-            
-        # Get center-most contour
-        center_y = height // 2
-        center_contour = min(contours, key=lambda c: abs(cv2.boundingRect(c)[1] - center_y))
-        x, y, w, h = cv2.boundingRect(center_contour)
-        
-        # Tight crop
-        x = max(x_min, x - w//20)
-        w = min(x_max - x, int(w * 1.1))
-        y = max(y_min, y - h//20)
-        h = min(y_max - y, int(h * 1.1))
-        
-        return (Image.fromarray(image_array[y:y+h, x:x+w]), 
-                Image.fromarray(cv2.rectangle(image_array.copy(), (x,y), (x+w,y+h), (0,255,0), 2)))
+        return (Image.fromarray(roi), 
+                Image.fromarray(cv2.rectangle(image_array.copy(), 
+                                           (x,y), (x+target_w,y+target_h), 
+                                           (0,255,0), 2)))
     except Exception as e:
         st.write("Error:", str(e))
         return None, None
