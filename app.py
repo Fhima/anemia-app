@@ -87,36 +87,20 @@ def predict_anemia(model, image):
 # Updated styling
 st.markdown("""
 <style>
-    .main {
-        background-color: #ffffff;
-        padding: 20px;
-    }
-    .title {
-        color: #1E3D59;
-        padding: 20px 0;
-        border-bottom: 2px solid #eee;
-    }
-    .card {
+    .main { background-color: #ffffff; padding: 20px; }
+    .title { color: #1E3D59; padding: 20px 0; border-bottom: 2px solid #eee; }
+    .card { 
         background-color: white;
         padding: 20px;
         border-radius: 8px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         margin: 20px 0;
     }
-    .instruction-card {
-        background-color: #f8f9fa;
-        padding: 15px;
-        border-radius: 8px;
-        margin: 10px 0;
-    }
     .stButton > button {
         background-color: #1E3D59;
         color: white;
         padding: 10px 20px;
         border-radius: 4px;
-    }
-    .upload-section {
-        margin: 20px 0;
     }
 </style>
 """, unsafe_allow_html=True)
