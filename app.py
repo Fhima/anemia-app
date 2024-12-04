@@ -21,45 +21,45 @@ def detect_conjunctiva(image):
         
         hsv = cv2.cvtColor(image_array, cv2.COLOR_RGB2HSV)
         
-        # Focus more on pink/red tones
-        lower_red = np.array([0, 70, 120])
-        upper_red = np.array([10, 255, 255])
-        mask = cv2.inRange(hsv, lower_red, upper_red)
+        # Two thresholds for better pink detection
+        lower_red1 = np.array([0, 70, 120])
+        upper_red1 = np.array([10, 255, 255])
+        lower_red2 = np.array([170, 70, 120])
+        upper_red2 = np.array([180, 255, 255])
         
+        mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+        mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+        mask = cv2.bitwise_or(mask1, mask2)
+        
+        # Find most likely conjunctiva region
         kernel = np.ones((3,3), np.uint8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        
+        # Focus on bottom third of image
+        y_min = int(height * 0.6)
+        mask[:y_min, :] = 0
         
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        # Only look at bottom half of image for conjunctiva
-        min_area = 500
-        max_area = width * height * 0.3
-        y_threshold = height * 0.5
-        
-        valid_contours = [c for c in contours if 
-                         min_area < cv2.contourArea(c) < max_area and
-                         cv2.boundingRect(c)[1] > y_threshold]
-        
-        if not valid_contours:
+        if not contours:
             return None, None
             
-        largest_contour = max(valid_contours, key=cv2.contourArea)
+        # Select largest contour in lower region
+        largest_contour = max(contours, key=cv2.contourArea)
         x, y, w, h = cv2.boundingRect(largest_contour)
         
-        # Tighter padding
-        padding = int(min(w, h) * 0.05)
-        x = max(0, x - padding)
-        y = max(0, y - padding)
-        w = min(width - x, w + 2*padding)
-        h = min(height - y, h + 2*padding)
+        # Tighter crop
+        x = max(0, x - w//10)
+        y = max(0, y - h//10)
+        w = min(width - x, w + w//5)
+        h = min(height - y, h + h//5)
         
         return (Image.fromarray(image_array[y:y+h, x:x+w]), 
                 Image.fromarray(cv2.rectangle(image_array.copy(), (x,y), (x+w,y+h), (0,255,0), 2)))
-                
     except Exception as e:
         st.write("Error:", str(e))
         return None, None
+       
 def load_model():
    return tf.keras.models.load_model('models/final_anemia_model.keras')
 
