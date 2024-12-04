@@ -25,10 +25,66 @@ def load_face_mesh():
 
 face_mesh = load_face_mesh()
 
-# Your existing functions here...
-[previous functions for detect_conjunctiva, load_model, preprocess_image, predict_anemia]
+# Keep your original functions here
+def detect_conjunctiva(image):
+    image = image.convert('RGB')
+    image_array = np.array(image)
+    height, width = image_array.shape[:2]
+    
+    results = face_mesh.process(image_array)
+    
+    if not results.multi_face_landmarks:
+        return None, None
+        
+    face_landmarks = results.multi_face_landmarks[0]
+    lower_eye_indices = [33, 7, 163, 144, 145, 153, 154, 155, 133]
+    
+    lower_eye_points = []
+    for idx in lower_eye_indices:
+        point = face_landmarks.landmark[idx]
+        x, y = int(point.x * width), int(point.y * height)
+        lower_eye_points.append((x, y))
+    
+    x_coords = [p[0] for p in lower_eye_points]
+    y_coords = [p[1] for p in lower_eye_points]
+    
+    x_min, x_max = min(x_coords), max(x_coords)
+    y_min, y_max = min(y_coords), max(y_coords)
+    
+    padding = int(width * 0.05)
+    x_min = max(0, x_min - padding)
+    y_min = max(0, y_min - padding)
+    x_max = min(width, x_max + padding)
+    y_max = min(height, y_max + padding)
+    
+    conjunctiva_region = image_array[y_min:y_max, x_min:x_max]
+    vis_image = image_array.copy()
+    cv2.rectangle(vis_image, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+    
+    return Image.fromarray(conjunctiva_region), Image.fromarray(vis_image)
 
-# Simple styling
+def load_model():
+    return tf.keras.models.load_model('models/final_anemia_model.keras')
+
+def preprocess_image(image):
+    if not isinstance(image, Image.Image):
+        img = Image.open(image)
+    else:
+        img = image
+    img = img.resize((160, 160))
+    img = img.convert('RGB')
+    img_array = img_to_array(img)
+    img_array = tf.keras.applications.efficientnet_v2.preprocess_input(img_array)
+    img_array = np.expand_dims(img_array, axis=0)
+    return img_array
+
+def predict_anemia(model, image):
+    img_processed = preprocess_image(image)
+    prediction = model.predict(img_processed)
+    confidence = abs(prediction[0][0] - 0.5) * 2
+    return prediction[0][0] > 0.5, confidence
+
+# Basic app layout
 st.title('Anemia Detection System')
 st.write('A medical screening tool that analyzes conjunctival images for potential anemia indicators.')
 
@@ -76,19 +132,14 @@ if uploaded_file:
 
 # Instructions
 st.subheader('Usage Instructions')
-st.write("""
-1. Capture a clear photograph of the lower inner eyelid
-2. Verify the detected region in the preview
-3. Proceed with analysis
-""")
+st.write('1. Capture a clear photograph of the lower inner eyelid')
+st.write('2. Verify the detected region in the preview')
+st.write('3. Proceed with analysis')
 
 st.subheader('Image Quality Guidelines')
-st.write("""
-- Use consistent, adequate lighting
-- Ensure clear visibility of the inner eyelid surface
-- Maintain steady positioning during capture
-- Minimize reflections and shadows
-""")
-</ul>
+st.write('- Use consistent, adequate lighting')
+st.write('- Ensure clear visibility of the inner eyelid surface')
+st.write('- Maintain steady positioning during capture')
+st.write('- Minimize reflections and shadows')
 </div>
 """, unsafe_allow_html=True)
