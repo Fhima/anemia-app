@@ -27,63 +27,48 @@ def load_face_mesh():
 face_mesh = load_face_mesh()
 
 def detect_conjunctiva(image):
-   try:
-       # Ensure minimum size for better detection
-       min_size = 640
-       w, h = image.size
-       if w < min_size or h < min_size:
-           ratio = min_size / min(w, h)
-           new_size = (int(w * ratio), int(h * ratio))
-           image = image.resize(new_size, Image.Resampling.LANCZOS)
-           st.write(f"Resized image to: {new_size[0]} x {new_size[1]}")
-
-       image = image.convert('RGB')
-       image_array = np.array(image)
-       height, width = image_array.shape[:2]
-       
-       st.write("Processing image of size:", width, "x", height)
-       
-       results = face_mesh.process(image_array)
-       
-       if not results.multi_face_landmarks:
-           st.write("No face landmarks detected")
-           return None, None
-           
-       st.write("Face landmarks detected")
-       face_landmarks = results.multi_face_landmarks[0]
-       
-       # Lower eyelid indices for right eye
-       lower_eye_indices = [33, 7, 163, 144, 145, 153, 154, 155, 133]
-       
-       lower_eye_points = []
-       for idx in lower_eye_indices:
-           point = face_landmarks.landmark[idx]
-           x, y = int(point.x * width), int(point.y * height)
-           lower_eye_points.append((x, y))
-       
-       x_coords = [p[0] for p in lower_eye_points]
-       y_coords = [p[1] for p in lower_eye_points]
-       
-       x_min, x_max = min(x_coords), max(x_coords)
-       y_min, y_max = min(y_coords), max(y_coords)
-       
-       padding = int(width * 0.05)
-       x_min = max(0, x_min - padding)
-       y_min = max(0, y_min - padding)
-       x_max = min(width, x_max + padding)
-       y_max = min(height, y_max + padding)
-       
-       # Debug print
-       st.write("ROI coordinates:", x_min, y_min, x_max, y_max)
-       
-       conjunctiva_region = image_array[y_min:y_max, x_min:x_max]
-       vis_image = image_array.copy()
-       cv2.rectangle(vis_image, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-       
-       return Image.fromarray(conjunctiva_region), Image.fromarray(vis_image)
-   except Exception as e:
-       st.write("Error in detection:", str(e))
-       return None, None
+    try:
+        # Convert to RGB
+        image = image.convert('RGB')
+        image_array = np.array(image)
+        
+        # Convert to HSV for better color segmentation
+        hsv = cv2.cvtColor(image_array, cv2.COLOR_RGB2HSV)
+        
+        # Define range for reddish/pink color of conjunctiva
+        lower_red = np.array([0, 30, 60])
+        upper_red = np.array([20, 180, 255])
+        
+        # Create mask
+        mask = cv2.inRange(hsv, lower_red, upper_red)
+        
+        # Find contours
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if not contours:
+            return None, None
+            
+        # Get largest contour
+        largest_contour = max(contours, key=cv2.contourArea)
+        x, y, w, h = cv2.boundingRect(largest_contour)
+        
+        # Add padding
+        padding = 10
+        x = max(0, x - padding)
+        y = max(0, y - padding)
+        w = min(image_array.shape[1] - x, w + 2*padding)
+        h = min(image_array.shape[0] - y, h + 2*padding)
+        
+        # Extract region and create visualization
+        conjunctiva_region = image_array[y:y+h, x:x+w]
+        vis_image = image_array.copy()
+        cv2.rectangle(vis_image, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        
+        return Image.fromarray(conjunctiva_region), Image.fromarray(vis_image)
+        
+    except Exception as e:
+        st.write("Error in detection:", str(e))
+        return None, None
 
 def load_model():
     return tf.keras.models.load_model('models/final_anemia_model.keras')
