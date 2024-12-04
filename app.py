@@ -19,41 +19,31 @@ def detect_conjunctiva(image):
         image_array = np.array(image)
         height, width = image_array.shape[:2]
         
-        hsv = cv2.cvtColor(image_array, cv2.COLOR_RGB2HSV)
+        # Find center of the eye region
+        center_x = width // 2
+        center_y = height // 2
         
-        # Keep same color range
-        lower_red = np.array([0, 50, 160])
-        upper_red = np.array([10, 200, 255])
-        mask = cv2.inRange(hsv, lower_red, upper_red)
+        # Define a fixed-size ROI around center
+        roi_width = int(width * 0.4)  # 40% of image width
+        roi_height = int(height * 0.25)  # 25% of image height
         
-        # Increase detection area
-        y_min = int(height * 0.35)
-        y_max = int(height * 0.65)
-        x_min = int(width * 0.2)  # Wider area
-        x_max = int(width * 0.8)
+        # Calculate ROI coordinates
+        x = center_x - roi_width//2
+        y = center_y - roi_height//2
         
-        mask[:y_min, :] = 0
-        mask[y_max:, :] = 0
-        mask[:, :x_min] = 0
-        mask[:, x_max:] = 0
+        # Ensure within bounds
+        x = max(0, x)
+        y = max(0, y)
+        roi_width = min(width - x, roi_width)
+        roi_height = min(height - y, roi_height)
         
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Extract region
+        roi = image_array[y:y+roi_height, x:x+roi_width]
         
-        if not contours:
-            return None, None
-            
-        # Get largest contour in region
-        largest_contour = max(contours, key=cv2.contourArea)
-        x, y, w, h = cv2.boundingRect(largest_contour)
-        
-        # More generous cropping
-        x = max(x_min, x - w//4)  # More padding
-        w = min(x_max - x, int(w * 1.5))  # Wider crop
-        y = max(y_min, y - h//4)
-        h = min(y_max - y, int(h * 1.5))
-        
-        return (Image.fromarray(image_array[y:y+h, x:x+w]), 
-                Image.fromarray(cv2.rectangle(image_array.copy(), (x,y), (x+w,y+h), (0,255,0), 2)))
+        return (Image.fromarray(roi),
+                Image.fromarray(cv2.rectangle(image_array.copy(), 
+                                           (x,y), (x+roi_width,y+roi_height), 
+                                           (0,255,0), 2)))
     except Exception as e:
         st.write("Error:", str(e))
         return None, None
