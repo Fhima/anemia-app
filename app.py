@@ -30,28 +30,34 @@ def detect_conjunctiva(image):
     try:
         image = image.convert('RGB')
         image_array = np.array(image)
-        st.write("Image shape:", image_array.shape)
         
         hsv = cv2.cvtColor(image_array, cv2.COLOR_RGB2HSV)
         
-        # Broader range for conjunctiva color
-        lower_red = np.array([0, 20, 50])
-        upper_red = np.array([30, 255, 255])
+        # Narrower range for pink/red conjunctiva
+        lower_red = np.array([0, 50, 100])
+        upper_red = np.array([10, 200, 255])
         
         mask = cv2.inRange(hsv, lower_red, upper_red)
-        st.image(mask, caption="Mask")  # Display mask for debugging
+        
+        # Add morphological operations
+        kernel = np.ones((5,5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
         
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        st.write("Number of contours found:", len(contours))
         
-        if not contours:
+        # Filter contours by size
+        min_area = 1000
+        valid_contours = [c for c in contours if cv2.contourArea(c) > min_area]
+        
+        if not valid_contours:
             return None, None
             
-        largest_contour = max(contours, key=cv2.contourArea)
+        largest_contour = max(valid_contours, key=cv2.contourArea)
         x, y, w, h = cv2.boundingRect(largest_contour)
-        st.write("ROI dimensions:", w, "x", h)
         
-        padding = 20
+        # Add padding
+        padding = int(min(w, h) * 0.1)
         x = max(0, x - padding)
         y = max(0, y - padding)
         w = min(image_array.shape[1] - x, w + 2*padding)
@@ -62,7 +68,6 @@ def detect_conjunctiva(image):
         cv2.rectangle(vis_image, (x, y), (x+w, y+h), (0, 255, 0), 2)
         
         return Image.fromarray(conjunctiva_region), Image.fromarray(vis_image)
-        
     except Exception as e:
         st.write("Error in detection:", str(e))
         return None, None
