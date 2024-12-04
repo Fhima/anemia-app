@@ -14,56 +14,48 @@ if 'conjunctiva_region' not in st.session_state:
    st.session_state.conjunctiva_region = None
 
 def detect_conjunctiva(image):
-   try:
-       image = image.convert('RGB')
-       image_array = np.array(image)
-       height, width = image_array.shape[:2]
-       
-       hsv = cv2.cvtColor(image_array, cv2.COLOR_RGB2HSV)
-       
-       # Pink/red conjunctiva detection
-       lower_red = np.array([0, 50, 100])
-       upper_red = np.array([10, 200, 255])
-       mask = cv2.inRange(hsv, lower_red, upper_red)
-       
-       kernel = np.ones((5,5), np.uint8)
-       mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-       mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-       
-       contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-       
-       st.write("Total contours found:", len(contours))
-       
-       # Filter by size
-       min_area = width * height * 0.05
-       max_area = width * height * 0.4
-       valid_contours = []
-       
-       for c in contours:
-           area = cv2.contourArea(c)
-           st.write("Contour area:", area, "Min area:", min_area, "Max area:", max_area)
-           if min_area < area < max_area:
-               valid_contours.append(c)
-       
-       st.write("Valid contours:", len(valid_contours))
-       
-       if not valid_contours:
-           return None, None
-           
-       largest_contour = max(valid_contours, key=cv2.contourArea)
-       x, y, w, h = cv2.boundingRect(largest_contour)
-       
-       padding = int(min(w, h) * 0.1)
-       x = max(0, x - padding)
-       y = max(0, y - padding)
-       w = min(width - x, w + 2*padding)
-       h = min(height - y, h + 2*padding)
-       
-       return (Image.fromarray(image_array[y:y+h, x:x+w]), 
-               Image.fromarray(cv2.rectangle(image_array.copy(), (x,y), (x+w,y+h), (0,255,0), 2)))
-   except Exception as e:
-       st.write("Error:", str(e))
-       return None, None
+    try:
+        image = image.convert('RGB')
+        image_array = np.array(image)
+        height, width = image_array.shape[:2]
+        
+        hsv = cv2.cvtColor(image_array, cv2.COLOR_RGB2HSV)
+        
+        # Pink/red conjunctiva detection
+        lower_red = np.array([0, 50, 100])
+        upper_red = np.array([10, 200, 255])
+        mask = cv2.inRange(hsv, lower_red, upper_red)
+        
+        kernel = np.ones((5,5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Fixed size thresholds
+        min_area = 1000  # Minimum pixel area
+        max_area = width * height * 0.8  # Maximum 80% of image
+        
+        valid_contours = [c for c in contours if min_area < cv2.contourArea(c) < max_area]
+        
+        if not valid_contours:
+            return None, None
+            
+        largest_contour = max(valid_contours, key=cv2.contourArea)
+        x, y, w, h = cv2.boundingRect(largest_contour)
+        
+        padding = int(min(w, h) * 0.1)
+        x = max(0, x - padding)
+        y = max(0, y - padding)
+        w = min(width - x, w + 2*padding)
+        h = min(height - y, h + 2*padding)
+        
+        return (Image.fromarray(image_array[y:y+h, x:x+w]), 
+                Image.fromarray(cv2.rectangle(image_array.copy(), (x,y), (x+w,y+h), (0,255,0), 2)))
+                
+    except Exception as e:
+        st.write("Error:", str(e))
+        return None, None
 
 def load_model():
    return tf.keras.models.load_model('models/final_anemia_model.keras')
