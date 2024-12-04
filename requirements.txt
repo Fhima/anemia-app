@@ -1,6 +1,6 @@
-tensorflow==2.18.0
-numpy>=2.0.0
-Pillow>=11.0.0
-opencv-python-headless>=4.10.0
-streamlit>=1.40.0
-mediapipe>=0.10.9
+tensorflow-cpu==2.15.0  # Using CPU version to reduce memory
+numpy==1.24.3
+Pillow==9.5.0
+opencv-python-headless==4.8.1.78
+streamlit==1.28.0
+mediapipe==0.10.3
