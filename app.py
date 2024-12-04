@@ -21,38 +21,31 @@ def detect_conjunctiva(image):
         
         hsv = cv2.cvtColor(image_array, cv2.COLOR_RGB2HSV)
         
-        # Two thresholds for better pink detection
-        lower_red1 = np.array([0, 70, 120])
-        upper_red1 = np.array([10, 255, 255])
-        lower_red2 = np.array([170, 70, 120])
-        upper_red2 = np.array([180, 255, 255])
+        # Target pink/red of conjunctiva
+        lower_red = np.array([0, 70, 120])
+        upper_red = np.array([10, 255, 255])
+        mask = cv2.inRange(hsv, lower_red, upper_red)
         
-        mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-        mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
-        mask = cv2.bitwise_or(mask1, mask2)
-        
-        # Find most likely conjunctiva region
-        kernel = np.ones((3,3), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-        
-        # Focus on bottom third of image
-        y_min = int(height * 0.6)
+        # Focus on middle-lower region
+        y_min = int(height * 0.4)
+        y_max = int(height * 0.8)
         mask[:y_min, :] = 0
+        mask[y_max:, :] = 0
+        
+        kernel = np.ones((5,5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
         
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         if not contours:
             return None, None
-            
-        # Select largest contour in lower region
+        
         largest_contour = max(contours, key=cv2.contourArea)
         x, y, w, h = cv2.boundingRect(largest_contour)
         
-        # Tighter crop
-        x = max(0, x - w//10)
-        y = max(0, y - h//10)
-        w = min(width - x, w + w//5)
-        h = min(height - y, h + h//5)
+        # Tighter crop around conjunctiva
+        y = max(y_min, y - h//4)
+        h = min(y_max - y, int(h * 1.2))
         
         return (Image.fromarray(image_array[y:y+h, x:x+w]), 
                 Image.fromarray(cv2.rectangle(image_array.copy(), (x,y), (x+w,y+h), (0,255,0), 2)))
