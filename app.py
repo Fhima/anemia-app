@@ -141,5 +141,3 @@ st.write('- Use consistent, adequate lighting')
 st.write('- Ensure clear visibility of the inner eyelid surface')
 st.write('- Maintain steady positioning during capture')
 st.write('- Minimize reflections and shadows')
-</div>
-""", unsafe_allow_html=True)
