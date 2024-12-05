@@ -7,79 +7,66 @@ import numpy as np
 from PIL import Image
 from tensorflow.keras.preprocessing.image import img_to_array
 import cv2
-import mediapipe as mp
+from roboflow import Roboflow
 
+# Initialize session state
 if 'prediction_made' not in st.session_state:
     st.session_state.prediction_made = False
 if 'conjunctiva_region' not in st.session_state:
     st.session_state.conjunctiva_region = None
 
+# Initialize Roboflow
 @st.cache_resource
-def load_face_mesh():
-    return mp.solutions.face_mesh.FaceMesh(
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.1,  # Lowered threshold
-        min_tracking_confidence=0.1,   # Lowered threshold
-        static_image_mode=True        # Added for single images
-    )
+def load_roboflow():
+    rf = Roboflow(api_key="YOUR_API_KEY")
+    project = rf.workspace("eyeconjunctivadetector").project("eye-conjunctiva-detector")
+    return project.version(1).model
 
-face_mesh = load_face_mesh()
+detector_model = load_roboflow()
 
 def detect_conjunctiva(image):
     try:
-        image = image.convert('RGB')
+        # Save image temporarily
+        temp_path = "temp_image.jpg"
+        image.save(temp_path)
+        
+        # Get prediction
+        predictions = detector_model.predict(temp_path, confidence=40, overlap=30).json()
+        
+        # Remove temp file
+        os.remove(temp_path)
+        
+        if not predictions['predictions']:
+            return None, None
+            
+        # Get the prediction with highest confidence
+        pred = max(predictions['predictions'], key=lambda x: x['confidence'])
+        
+        # Extract bbox
+        x = int(pred['x'] - pred['width']/2)
+        y = int(pred['y'] - pred['height']/2)
+        w = int(pred['width'])
+        h = int(pred['height'])
+        
+        # Ensure coordinates are within image bounds
         image_array = np.array(image)
         height, width = image_array.shape[:2]
+        x = max(0, x)
+        y = max(0, y)
+        w = min(width - x, w)
+        h = min(height - y, h)
         
-        # Add debug info
-        st.write(f"Image shape: {image_array.shape}")
+        # Extract region
+        conjunctiva_region = image_array[y:y+h, x:x+w]
         
-        results = face_mesh.process(image_array)
+        # Create visualization
+        vis_image = image_array.copy()
+        cv2.rectangle(vis_image, (x, y), (x+w, y+h), (0, 255, 0), 2)
         
-        if not results.multi_face_landmarks:
-            st.write("No landmarks detected - trying with larger image")
-            # Try scaling up image
-            image_large = image.resize((width*2, height*2), Image.Resampling.LANCZOS)
-            image_array_large = np.array(image_large)
-            results = face_mesh.process(image_array_large)
-            
-            if not results.multi_face_landmarks:
-                st.warning("Eye landmarks not detected even with scaling.")
-                return None, None
+        return Image.fromarray(conjunctiva_region), Image.fromarray(vis_image)
         
-        # Lower eyelid landmarks
-        lower_eye_indices = [33, 7, 163, 144, 145, 153, 154, 155, 133]
-        
-        points = []
-        for idx in lower_eye_indices:
-            landmark = results.multi_face_landmarks[0].landmark[idx]
-            x, y = int(landmark.x * width), int(landmark.y * height)
-            points.append((x, y))
-        
-        x_coords = [p[0] for p in points]
-        y_coords = [p[1] for p in points]
-        
-        x_min, x_max = min(x_coords), max(x_coords)
-        y_min, y_max = min(y_coords), max(y_coords)
-        
-        # Add padding
-        padding_x = int((x_max - x_min) * 0.2)
-        padding_y = int((y_max - y_min) * 0.2)
-        
-        x_min = max(0, x_min - padding_x)
-        x_max = min(width, x_max + padding_x)
-        y_min = max(0, y_min - padding_y)
-        y_max = min(height, y_max + padding_y)
-        
-        roi = image_array[y_min:y_max, x_min:x_max]
-        
-        return Image.fromarray(roi), Image.fromarray(cv2.rectangle(image_array.copy(), 
-                                                                 (x_min, y_min), 
-                                                                 (x_max, y_max), 
-                                                                 (0, 255, 0), 2))
     except Exception as e:
-        st.error(f"Error during detection: {str(e)}")
+        st.error(f"Error in detection: {str(e)}")
         return None, None
 
 def load_model():
@@ -111,6 +98,7 @@ def predict_anemia(model, image):
     confidence = abs(prediction[0][0] - 0.5) * 2
     return prediction[0][0] > 0.5, confidence
 
+# App UI
 st.title('Anemia Detection System')
 st.write('A medical screening tool that analyzes conjunctival images for potential anemia indicators.')
 
@@ -123,7 +111,7 @@ if uploaded_file:
     conjunctiva_region, detection_vis = detect_conjunctiva(image)
     
     if conjunctiva_region is None:
-        st.error("Detection failed. Please ensure the eye is clearly visible in the image.")
+        st.error("Could not detect conjunctiva. Please ensure the inner eyelid is clearly visible.")
     else:
         st.subheader("Image Analysis")
         col1, col2 = st.columns(2)
@@ -143,7 +131,6 @@ if uploaded_file:
                     is_anemic, confidence = predict_anemia(model, st.session_state.conjunctiva_region)
                     
                     st.subheader('Analysis Results')
-                    
                     if is_anemic:
                         st.error(f'Potential anemia detected (confidence: {confidence:.1%})')
                     else:
