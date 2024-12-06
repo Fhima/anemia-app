@@ -6,7 +6,8 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image, ImageDraw
 from tensorflow.keras.preprocessing.image import img_to_array
-from inference_sdk import InferenceHTTPClient
+import requests
+import json
 
 # Initialize session state
 if 'prediction_made' not in st.session_state:
@@ -17,10 +18,10 @@ if 'conjunctiva_region' not in st.session_state:
 # Initialize Roboflow
 @st.cache_resource
 def load_roboflow():
-    return InferenceHTTPClient(
-        api_url="https://detect.roboflow.com",
-        api_key="g6W2V0dcNuMVTkygIv9G"
-    )
+    return {
+        "api_url": "https://detect.roboflow.com",
+        "api_key": "g6W2V0dcNuMVTkygIv9G"
+    }
 
 detector_model = load_roboflow()
 
@@ -30,17 +31,32 @@ def detect_conjunctiva(image):
         temp_path = "temp_image.jpg"
         image.save(temp_path)
         
-        # Get prediction using inference client
-        prediction = detector_model.infer(temp_path, model_id="eye-conjunctiva-detector/2")
+        # Read image as bytes
+        with open(temp_path, "rb") as image_file:
+            image_data = image_file.read()
+        
+        # Make prediction request
+        response = requests.post(
+            f"{detector_model['api_url']}/eye-conjunctiva-detector/2",
+            params={
+                "api_key": detector_model['api_key'],
+            },
+            data=image_data,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded"
+            }
+        )
         
         # Remove temp file
         os.remove(temp_path)
         
-        if not prediction:
+        predictions = response.json()
+        
+        if not predictions.get('predictions'):
             return None, None
             
         # Get the prediction with highest confidence
-        pred = max(prediction, key=lambda x: x['confidence'])
+        pred = max(predictions['predictions'], key=lambda x: x['confidence'])
         
         # Extract bbox
         x = int(pred['x'] - pred['width']/2)
