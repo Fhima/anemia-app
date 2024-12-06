@@ -25,24 +25,24 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def preprocess_for_detection(image):
-   """Preprocess image to better match the training data format"""
-   try:
-       # Convert to RGB if needed
-       if image.mode == 'RGBA':
-           image = image.convert('RGB')
-           
-       # Calculate dimensions for cropping focus area
-       width, height = image.size
-       crop_height = int(height * 0.4)  # Focus on lower 40% where conjunctiva usually is
-       crop_top = int(height * 0.5)  # Start from middle of image
-       
-       # Crop to focus on lower eyelid region
-       cropped = image.crop((0, crop_top, width, crop_top + crop_height))
-       
-       return cropped
-   except Exception as e:
-       st.error(f"Error preprocessing image: {str(e)}")
-       return image
+    """Preprocess image to better match the training data format"""
+    try:
+        # Convert to RGB if needed
+        if image.mode == 'RGBA':
+            image = image.convert('RGB')
+            
+        # Calculate dimensions for cropping focus area
+        width, height = image.size
+        crop_height = int(height * 0.6)  # Increased from 0.4 to 0.6 to capture more of the eye
+        crop_top = int(height * 0.3)     # Start higher up (changed from 0.5)
+        
+        # Crop to focus on lower eyelid region
+        cropped = image.crop((0, crop_top, width, crop_top + crop_height))
+        
+        return cropped
+    except Exception as e:
+        st.error(f"Error preprocessing image: {str(e)}")
+        return image
 
 def standardize_conjunctiva_image(image):
    """Standardize the cropped conjunctiva image to match CP-AnemicC format"""
