@@ -24,15 +24,34 @@ def load_roboflow():
 
 detector_model = load_roboflow()
 
-def detect_conjunctiva(image):
+def preprocess_for_detection(image):
+    """Preprocess image to better match the training data format"""
     try:
-        # Convert RGBA to RGB if necessary
+        # Convert to RGB if needed
         if image.mode == 'RGBA':
             image = image.convert('RGB')
             
+        # Calculate dimensions for cropping focus area
+        width, height = image.size
+        crop_height = int(height * 0.4)  # Focus on lower 40% where conjunctiva usually is
+        crop_top = int(height * 0.5)  # Start from middle of image
+        
+        # Crop to focus on lower eyelid region
+        cropped = image.crop((0, crop_top, width, crop_top + crop_height))
+        
+        return cropped
+    except Exception as e:
+        st.error(f"Error preprocessing image: {str(e)}")
+        return image
+
+def detect_conjunctiva(image):
+    try:
+        # Preprocess image
+        processed_image = preprocess_for_detection(image)
+        
         # Save image temporarily
         temp_path = "temp_image.jpg"
-        image.save(temp_path)
+        processed_image.save(temp_path)
         
         with open(temp_path, "rb") as image_file:
             image_data = image_file.read()
@@ -51,12 +70,12 @@ def detect_conjunctiva(image):
         
         if response.status_code != 200:
             st.error("Error connecting to detection service")
-            return None, None
+            return None, None, None
             
         predictions = response.json()
         
         if not predictions.get('predictions'):
-            return None, None
+            return None, None, None
             
         # Get the prediction with highest confidence
         pred = max(predictions['predictions'], key=lambda x: x['confidence'])
@@ -68,7 +87,7 @@ def detect_conjunctiva(image):
         h = int(pred['height'])
         
         # Ensure coordinates are within image bounds
-        image_array = np.array(image)
+        image_array = np.array(processed_image)
         height, width = image_array.shape[:2]
         x = max(0, x)
         y = max(0, y)
@@ -79,7 +98,7 @@ def detect_conjunctiva(image):
         conjunctiva_region = image_array[y:y+h, x:x+w]
         
         # Create visualization
-        vis_image = image.copy()
+        vis_image = processed_image.copy()
         draw = ImageDraw.Draw(vis_image)
         draw.rectangle([x, y, x+w, y+h], outline='green', width=3)
         
