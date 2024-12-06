@@ -31,13 +31,10 @@ def detect_conjunctiva(image):
         temp_path = "temp_image.jpg"
         image.save(temp_path)
         
-        # Read image as bytes
         with open(temp_path, "rb") as image_file:
             image_data = image_file.read()
         
-        # Debug URL being used
         api_url = f"{detector_model['api_url']}/eye-conjunctiva-detector/2"
-        st.write(f"Attempting detection with URL: {api_url}")
         
         # Make prediction request
         response = requests.post(
@@ -53,25 +50,20 @@ def detect_conjunctiva(image):
         # Remove temp file
         os.remove(temp_path)
         
-        # Always show the response
-        st.write("Response status:", response.status_code)
-        st.write("Full response:", response.text)
-        
         if response.status_code != 200:
-            st.error(f"API Error: {response.text}")
+            st.error("Error connecting to detection service")
             return None, None
             
         predictions = response.json()
         
         if not predictions.get('predictions'):
-            st.warning("No predictions returned from the API")
             return None, None
             
         # Get the prediction with highest confidence
         pred = max(predictions['predictions'], key=lambda x: x['confidence'])
         
-        # Print prediction details
-        st.write("Prediction found:", pred)
+        # Show only relevant information
+        st.info(f"Detected region: {pred['class']} (Confidence: {pred['confidence']:.2%})")
         
         # Extract bbox
         x = int(pred['x'] - pred['width']/2)
