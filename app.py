@@ -26,6 +26,10 @@ detector_model = load_roboflow()
 
 def detect_conjunctiva(image):
     try:
+        # Convert RGBA to RGB if necessary
+        if image.mode == 'RGBA':
+            image = image.convert('RGB')
+            
         # Save image temporarily
         temp_path = "temp_image.jpg"
         image.save(temp_path)
