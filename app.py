@@ -6,7 +6,7 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image, ImageDraw
 from tensorflow.keras.preprocessing.image import img_to_array
-from roboflow import Roboflow
+from inference_sdk import InferenceHTTPClient
 
 # Initialize session state
 if 'prediction_made' not in st.session_state:
@@ -17,8 +17,12 @@ if 'conjunctiva_region' not in st.session_state:
 # Initialize Roboflow
 @st.cache_resource
 def load_roboflow():
-    rf = Roboflow(api_key="g6W2V0dcNuMVTkygIv9G")
-    return rf.workspace("eyeconjunctivadetector").project("eye-conjunctiva-detectorV2").version(2)
+    return InferenceHTTPClient(
+        api_url="https://detect.roboflow.com",
+        api_key="g6W2V0dcNuMVTkygIv9G"
+    )
+
+detector_model = load_roboflow()
 
 def detect_conjunctiva(image):
     try:
@@ -26,17 +30,17 @@ def detect_conjunctiva(image):
         temp_path = "temp_image.jpg"
         image.save(temp_path)
         
-        # Get prediction
-        predictions = detector_model.predict(temp_path, confidence=60, overlap=30).json()
+        # Get prediction using inference client
+        prediction = detector_model.infer(temp_path, model_id="eye-conjunctiva-detector/2")
         
         # Remove temp file
         os.remove(temp_path)
         
-        if not predictions['predictions']:
+        if not prediction:
             return None, None
             
         # Get the prediction with highest confidence
-        pred = max(predictions['predictions'], key=lambda x: x['confidence'])
+        pred = max(prediction, key=lambda x: x['confidence'])
         
         # Extract bbox
         x = int(pred['x'] - pred['width']/2)
@@ -55,7 +59,7 @@ def detect_conjunctiva(image):
         # Extract region
         conjunctiva_region = image_array[y:y+h, x:x+w]
         
-        # Create visualization using PIL
+        # Create visualization
         vis_image = image.copy()
         draw = ImageDraw.Draw(vis_image)
         draw.rectangle([x, y, x+w, y+h], outline='green', width=3)
