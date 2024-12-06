@@ -4,9 +4,9 @@ st.set_page_config(page_title="Anemia Detection", layout="wide")
 import os
 import tensorflow as tf
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from tensorflow.keras.preprocessing.image import img_to_array
-from inference_sdk import InferenceHTTPClient
+from roboflow import Roboflow
 
 # Initialize session state
 if 'prediction_made' not in st.session_state:
@@ -17,25 +17,11 @@ if 'conjunctiva_region' not in st.session_state:
 # Initialize Roboflow
 @st.cache_resource
 def load_roboflow():
-    return InferenceHTTPClient(
-        api_url="https://detect.roboflow.com",
-        api_key="g6W2V0dcNuMVTkygIv9G"
-    )
+    rf = Roboflow(api_key="g6W2V0dcNuMVTkygIv9G")
+    project = rf.workspace("eyeconjunctivadetector").project("eye-conjunctiva-detector")
+    return project.model
 
 detector_model = load_roboflow()
-
-def draw_box(image, box, color=(0, 255, 0)):
-    # Convert PIL Image to numpy array
-    img_array = np.array(image)
-    x, y, w, h = box
-    
-    # Draw rectangle using numpy operations
-    img_array[y:y+2, x:x+w] = color  # Top line
-    img_array[y+h-2:y+h, x:x+w] = color  # Bottom line
-    img_array[y:y+h, x:x+2] = color  # Left line
-    img_array[y:y+h, x+w-2:x+w] = color  # Right line
-    
-    return Image.fromarray(img_array)
 
 def detect_conjunctiva(image):
     try:
@@ -43,17 +29,17 @@ def detect_conjunctiva(image):
         temp_path = "temp_image.jpg"
         image.save(temp_path)
         
-        # Get prediction using inference client
-        prediction = detector_model.infer(temp_path, model_id="eye-conjunctiva-detector/2")
+        # Get prediction
+        predictions = detector_model.predict(temp_path, confidence=60, overlap=30).json()
         
         # Remove temp file
         os.remove(temp_path)
         
-        if not prediction:
+        if not predictions['predictions']:
             return None, None
             
         # Get the prediction with highest confidence
-        pred = max(prediction, key=lambda x: x['confidence'])
+        pred = max(predictions['predictions'], key=lambda x: x['confidence'])
         
         # Extract bbox
         x = int(pred['x'] - pred['width']/2)
@@ -72,8 +58,10 @@ def detect_conjunctiva(image):
         # Extract region
         conjunctiva_region = image_array[y:y+h, x:x+w]
         
-        # Create visualization using PIL instead of cv2
-        vis_image = draw_box(image, (x, y, w, h))
+        # Create visualization using PIL
+        vis_image = image.copy()
+        draw = ImageDraw.Draw(vis_image)
+        draw.rectangle([x, y, x+w, y+h], outline='green', width=3)
         
         return Image.fromarray(conjunctiva_region), vis_image
         
