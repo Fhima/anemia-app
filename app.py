@@ -19,7 +19,7 @@ if 'conjunctiva_region' not in st.session_state:
 def load_roboflow():
     rf = Roboflow(api_key="g6W2V0dcNuMVTkygIv9G")
     project = rf.workspace("eyeconjunctivadetector").project("eye-conjunctiva-detector")
-    return project.model
+    return project.version(2).model
 
 detector_model = load_roboflow()
 
