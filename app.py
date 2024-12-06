@@ -44,6 +44,40 @@ def preprocess_for_detection(image):
        st.error(f"Error preprocessing image: {str(e)}")
        return image
 
+def standardize_conjunctiva_image(image):
+   """Standardize the cropped conjunctiva image to match CP-AnemicC format"""
+   try:
+       # Convert to RGB if needed
+       if isinstance(image, np.ndarray):
+           image = Image.fromarray(image)
+       if image.mode != 'RGB':
+           image = image.convert('RGB')
+           
+       # Standardize size while maintaining aspect ratio
+       target_width = 160  # Match your model's input size
+       aspect_ratio = image.width / image.height
+       target_height = int(target_width / aspect_ratio)
+       image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+       
+       # Add padding if needed to match square input
+       if target_height != target_width:
+           new_img = Image.new('RGB', (target_width, target_width), (255, 255, 255))
+           paste_y = (target_width - target_height) // 2
+           new_img.paste(image, (0, paste_y))
+           image = new_img
+           
+       # Convert to numpy array
+       img_array = np.array(image)
+       
+       # Normalize colors
+       img_array = img_array.astype(np.float32)
+       img_array = img_array / 255.0
+       
+       return Image.fromarray((img_array * 255).astype(np.uint8))
+   except Exception as e:
+       st.error(f"Error standardizing image: {str(e)}")
+       return image
+
 def detect_conjunctiva(image):
    try:
        # Preprocess image
@@ -128,10 +162,24 @@ def preprocess_image(image):
    return np.expand_dims(img_array, axis=0)
 
 def predict_anemia(model, image):
-   img_processed = preprocess_image(image)
-   prediction = model.predict(img_processed)
-   confidence = abs(prediction[0][0] - 0.5) * 2
-   return prediction[0][0] > 0.5, confidence
+   try:
+       # Standardize the conjunctiva image
+       standardized_img = standardize_conjunctiva_image(image)
+       
+       # Show standardized image (for debugging)
+       st.image(standardized_img, caption="Standardized Image for Analysis", width=200)
+       
+       # Preprocess for model
+       img_processed = preprocess_image(standardized_img)
+       
+       # Get prediction
+       prediction = model.predict(img_processed)
+       confidence = abs(prediction[0][0] - 0.5) * 2
+       
+       return prediction[0][0] > 0.5, confidence
+   except Exception as e:
+       st.error(f"Error in anemia prediction: {str(e)}")
+       return None, None
 
 # App UI
 st.title('Anemia Detection System')
