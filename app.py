@@ -120,12 +120,17 @@ st.write('A medical screening tool that analyzes conjunctival images for potenti
 
 with st.container():
     st.markdown("""
-    ### Usage Instructions
-    1. Take a clear photograph showing your inner lower eyelid (conjunctiva)
-    2. Pull down lower eyelid to expose inner surface
-    3. Ensure good lighting and steady positioning
-    4. Keep eye open and minimize reflections/shadows
-    """)
+### Usage Instructions
+1. Take a clear photograph focusing specifically on the lower eyelid area:
+   - Pull down the lower eyelid to clearly expose the inner surface
+   - Frame the photo to show mainly the conjunctiva (inner red/pink area)
+   - Minimize the amount of surrounding eye area in the frame
+2. Ensure proper lighting:
+   - Use consistent, even lighting
+   - Avoid harsh shadows or reflections
+3. Keep the eye steady and in focus
+4. The photo should be similar to medical reference images of conjunctiva examinations
+""")
 
 model = load_model()
 
