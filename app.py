@@ -18,9 +18,7 @@ if 'conjunctiva_region' not in st.session_state:
 @st.cache_resource
 def load_roboflow():
     rf = Roboflow(api_key="g6W2V0dcNuMVTkygIv9G")
-    model = rf.workspace().project("eye-conjunctiva-detectorV2").version(2)
-    return model
-
+    return rf.workspace("eyeconjunctivadetector").project("eye-conjunctiva-detectorV2").version(2)
 detector_model = load_roboflow()
 
 def detect_conjunctiva(image):
