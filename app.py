@@ -26,30 +26,27 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def detect_conjunctiva(image):
-   try:
-       # Save image temporarily
-       temp_path = "temp_image.jpg"
-       image.save(temp_path)
-       
-       # Read image as bytes
-       with open(temp_path, "rb") as image_file:
-           image_data = image_file.read()
-       
-       # Use V2 in the URL
-       api_url = f"{detector_model['api_url']}/eye-conjunctiva-detectorV2/2"
-       st.write(f"Attempting detection with URL: {api_url}")
-       
-       # Make prediction request with lower confidence threshold
-       response = requests.post(
-           api_url,
-           params={
-               "api_key": detector_model['api_key'],
-               "confidence": 20  # Lower confidence threshold
-           },
-           files={
-               "file": ("image.jpg", open(temp_path, "rb"), "image/jpeg")
-           }
-       )
+    try:
+        temp_path = "temp_image.jpg"
+        image.save(temp_path)
+        
+        with open(temp_path, "rb") as image_file:
+            image_data = image_file.read()
+        
+        # Using the exact project name structure from the URL
+        api_url = f"{detector_model['api_url']}/eyeconjunctivadetector/eye-conjunctiva-detector/2"
+        st.write(f"Attempting detection with URL: {api_url}")
+        
+        response = requests.post(
+            api_url,
+            params={
+                "api_key": detector_model['api_key'],
+                "confidence": 20
+            },
+            files={
+                "file": ("image.jpg", open(temp_path, "rb"), "image/jpeg")
+            }
+        )
        
        # Remove temp file
        os.remove(temp_path)
