@@ -6,7 +6,6 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image
 from tensorflow.keras.preprocessing.image import img_to_array
-import cv2
 from inference_sdk import InferenceHTTPClient
 
 # Initialize session state
@@ -24,6 +23,19 @@ def load_roboflow():
     )
 
 detector_model = load_roboflow()
+
+def draw_box(image, box, color=(0, 255, 0)):
+    # Convert PIL Image to numpy array
+    img_array = np.array(image)
+    x, y, w, h = box
+    
+    # Draw rectangle using numpy operations
+    img_array[y:y+2, x:x+w] = color  # Top line
+    img_array[y+h-2:y+h, x:x+w] = color  # Bottom line
+    img_array[y:y+h, x:x+2] = color  # Left line
+    img_array[y:y+h, x+w-2:x+w] = color  # Right line
+    
+    return Image.fromarray(img_array)
 
 def detect_conjunctiva(image):
     try:
@@ -60,11 +72,10 @@ def detect_conjunctiva(image):
         # Extract region
         conjunctiva_region = image_array[y:y+h, x:x+w]
         
-        # Create visualization
-        vis_image = image_array.copy()
-        cv2.rectangle(vis_image, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        # Create visualization using PIL instead of cv2
+        vis_image = draw_box(image, (x, y, w, h))
         
-        return Image.fromarray(conjunctiva_region), Image.fromarray(vis_image)
+        return Image.fromarray(conjunctiva_region), vis_image
         
     except Exception as e:
         st.error(f"Error in detection: {str(e)}")
