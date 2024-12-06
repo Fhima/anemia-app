@@ -19,7 +19,6 @@ if 'conjunctiva_region' not in st.session_state:
 def load_roboflow():
     rf = Roboflow(api_key="g6W2V0dcNuMVTkygIv9G")
     return rf.workspace("eyeconjunctivadetector").project("eye-conjunctiva-detectorV2").version(2)
-detector_model = load_roboflow()
 
 def detect_conjunctiva(image):
     try:
