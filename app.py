@@ -149,6 +149,3 @@ st.markdown("""
 3. Ensure good lighting and steady positioning
 4. Keep eye open and minimize reflections/shadows
 """)
-3. Ensure good lighting and steady positioning
-4. Keep eye open and minimize reflections/shadows
-""")
