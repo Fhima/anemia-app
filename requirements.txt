@@ -5,4 +5,4 @@ opencv-python-headless>=4.7.0
 streamlit>=1.29.0
 mediapipe>=0.10.3
 roboflow
-
+inference-sdk
