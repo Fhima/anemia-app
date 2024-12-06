@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 from tensorflow.keras.preprocessing.image import img_to_array
 import cv2
-from roboflow import Roboflow
+from inference_sdk import InferenceHTTPClient
 
 # Initialize session state
 if 'prediction_made' not in st.session_state:
@@ -18,9 +18,10 @@ if 'conjunctiva_region' not in st.session_state:
 # Initialize Roboflow
 @st.cache_resource
 def load_roboflow():
-    rf = Roboflow(api_key="g6W2V0dcNuMVTkygIv9G")
-    project = rf.workspace("eyeconjunctivadetector").project("eye-conjunctiva-detector")
-    return project.version(2).model
+    return InferenceHTTPClient(
+        api_url="https://detect.roboflow.com",
+        api_key="g6W2V0dcNuMVTkygIv9G"
+    )
 
 detector_model = load_roboflow()
 
@@ -30,17 +31,17 @@ def detect_conjunctiva(image):
         temp_path = "temp_image.jpg"
         image.save(temp_path)
         
-        # Get prediction
-        predictions = detector_model.predict(temp_path, confidence=40, overlap=30).json()
+        # Get prediction using inference client
+        prediction = detector_model.infer(temp_path, model_id="eye-conjunctiva-detector/2")
         
         # Remove temp file
         os.remove(temp_path)
         
-        if not predictions['predictions']:
+        if not prediction:
             return None, None
             
         # Get the prediction with highest confidence
-        pred = max(predictions['predictions'], key=lambda x: x['confidence'])
+        pred = max(prediction, key=lambda x: x['confidence'])
         
         # Extract bbox
         x = int(pred['x'] - pred['width']/2)
@@ -145,6 +146,9 @@ st.markdown("""
 ### Usage Instructions
 1. Take a clear photograph showing your inner lower eyelid (conjunctiva)
 2. Pull down lower eyelid to expose inner surface
+3. Ensure good lighting and steady positioning
+4. Keep eye open and minimize reflections/shadows
+""")
 3. Ensure good lighting and steady positioning
 4. Keep eye open and minimize reflections/shadows
 """)
