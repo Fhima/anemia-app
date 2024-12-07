@@ -4,10 +4,8 @@ st.set_page_config(page_title="Anemia Detection", layout="wide")
 import os
 import tensorflow as tf
 import numpy as np
-from PIL import Image, ImageDraw
-from tensorflow.keras.preprocessing.image import img_to_array
+from PIL import Image
 import requests
-import cv2
 
 # Initialize session state
 if 'prediction_made' not in st.session_state:
@@ -25,72 +23,22 @@ def load_roboflow():
 
 detector_model = load_roboflow()
 
-def create_curved_mask(image, pred, class_name):
-    """Create a curved mask following the conjunctiva contour"""
-    try:
-        # Convert to numpy array
-        img_array = np.array(image)
-        height, width = img_array.shape[:2]
-        
-        # Get bbox center points
-        x = int(pred['x'] - pred['width']/2)
-        y = int(pred['y'] - pred['height']/2)
-        w = int(pred['width'])
-        h = int(pred['height'])
-        
-        # Create more natural crescent shape points
-        num_points = 100
-        x_points = np.linspace(x, x + w, num_points)
-        
-        # Bottom curve (deeper curve matching training data)
-        bottom_curve = y + h/2 + h/3 * np.sin(np.pi * (x_points - x) / w)
-        
-        # Top curve (shallower curve matching training data)
-        top_curve = y + h/2 - h/4 * np.sin(np.pi * (x_points - x) / w)
-        
-        # Create polygon points for mask
-        polygon_points = np.vstack([
-            np.column_stack([x_points, bottom_curve]),
-            np.column_stack([x_points[::-1], top_curve[::-1]])
-        ])
-        
-        # Create binary mask
-        mask = np.zeros((height, width), dtype=np.uint8)
-        cv2.fillPoly(mask, [polygon_points.astype(np.int32)], 255)
-        
-        return mask, polygon_points
-    except Exception as e:
-        st.error(f"Error creating curved mask: {str(e)}")
-        return None, None
-
 def detect_conjunctiva(image):
     try:
-        # Basic preprocessing
-        processed_image = image
-        if image.mode == 'RGBA':
-            processed_image = image.convert('RGB')
-        
         # Save image temporarily
         temp_path = "temp_image.jpg"
-        processed_image.save(temp_path)
-        
-        with open(temp_path, "rb") as image_file:
-            image_data = image_file.read()
-        
-        api_url = f"{detector_model['api_url']}/eye-conjunctiva-detector/2"
+        image.save(temp_path)
         
         # Make prediction request
         response = requests.post(
-            api_url,
+            f"{detector_model['api_url']}/eye-conjunctiva-detector/2",
             params={
                 "api_key": detector_model['api_key'],
                 "confidence": 30,
-                "overlap": 50
             },
             files={"file": ("image.jpg", open(temp_path, "rb"), "image/jpeg")}
         )
         
-        # Remove temp file
         os.remove(temp_path)
         
         if response.status_code != 200:
@@ -98,53 +46,27 @@ def detect_conjunctiva(image):
             return None, None, None
             
         predictions = response.json()
+        st.write("API Response:", predictions)  # Debug output
         
         if not predictions.get('predictions'):
             return None, None, None
             
-        # Get the prediction with highest confidence
-        pred = max(predictions['predictions'], key=lambda x: x['confidence'])
-        class_name = pred['class']
-        
-        # Create curved mask
-        mask, polygon_points = create_curved_mask(processed_image, pred, class_name)
-        
-        if mask is not None and polygon_points is not None:
-            # Create RGBA version for transparent background
-            img_array = np.array(processed_image)
-            rgba = cv2.cvtColor(img_array, cv2.COLOR_RGB2RGBA)
-            
-            # Apply mask
-            rgba[mask == 0] = [0, 0, 0, 0]
-            
-            # Find bounds of non-zero (non-transparent) region
-            coords = cv2.findNonZero(mask)
-            x, y, w, h = cv2.boundingRect(coords)
-            
-            # Extract conjunctiva region with transparency
-            conjunctiva_region = rgba[y:y+h, x:x+w]
-            
-            # Create visualization with curved outline
-            vis_image = processed_image.copy()
-            vis_array = np.array(vis_image)
-            
-            # Draw filled polygon with transparency
-            overlay = vis_array.copy()
-            cv2.fillPoly(overlay, [polygon_points.astype(np.int32)], (0, 255, 0))
-            alpha = 0.3
-            vis_array = cv2.addWeighted(overlay, alpha, vis_array, 1 - alpha, 0)
-            
-            # Draw outline
-            cv2.polylines(vis_array, [polygon_points.astype(np.int32)], True, (0, 255, 0), 2)
-            
-            return Image.fromarray(conjunctiva_region), Image.fromarray(vis_array), pred['confidence']
-        
-        return None, None, None
+        return image, image, 0.5  # Simple return for testing
         
     except Exception as e:
-        st.error("Error during image processing")
-        st.write("Error details:", str(e))
+        st.error(f"Error: {str(e)}")
         return None, None, None
+
+# Simple UI for testing
+st.title('Anemia Detection System - Test Version')
+
+uploaded_file = st.file_uploader("Upload Eye Image", type=['jpg', 'jpeg', 'png'])
+
+if uploaded_file:
+    image = Image.open(uploaded_file)
+    result = detect_conjunctiva(image)
+    if result[0] is not None:
+        st.image(image, caption="Uploaded Image")
        
 def preprocess_for_anemia_detection(image):
    """Preprocess ROI exactly as done in training"""
