@@ -67,29 +67,45 @@ def extract_curved_conjunctiva(image):
        return image
 
 def preprocess_for_detection(image):
-   """Preprocess image to better match the training data format"""
-   try:
-       # Convert to RGB if needed
-       if image.mode == 'RGBA':
-           image = image.convert('RGB')
-           
-       # First do a rough crop to focus on eye area
-       width, height = image.size
-       crop_height = int(height * 0.8)
-       crop_top = int(height * 0.2)
-       rough_crop = image.crop((0, crop_top, width, crop_top + crop_height))
-       
-       # Then extract just the curved conjunctiva region
-       curved_crop = extract_curved_conjunctiva(rough_crop)
-       
-       # Enhance contrast slightly
-       enhancer = ImageEnhance.Contrast(curved_crop)
-       enhanced = enhancer.enhance(1.2)
-       
-       return enhanced
-   except Exception as e:
-       st.error(f"Error preprocessing image: {str(e)}")
-       return image
+    """Preprocess image to better match the training data format"""
+    try:
+        # Convert to RGB if needed
+        if image.mode == 'RGBA':
+            image = image.convert('RGB')
+            
+        # Show original image
+        st.write("Original Image:")
+        st.image(image, caption="Original", width=200)
+            
+        # First do a rough crop to focus on eye area
+        width, height = image.size
+        crop_height = int(height * 0.8)
+        crop_top = int(height * 0.2)
+        rough_crop = image.crop((0, crop_top, width, crop_top + crop_height))
+        
+        # Show rough crop
+        st.write("After rough crop:")
+        st.image(rough_crop, caption="Rough Crop", width=200)
+        
+        # Then extract just the curved conjunctiva region
+        curved_crop = extract_curved_conjunctiva(rough_crop)
+        
+        # Show curved crop
+        st.write("After curved crop:")
+        st.image(curved_crop, caption="Curved Crop", width=200)
+        
+        # Enhance contrast slightly
+        enhancer = ImageEnhance.Contrast(curved_crop)
+        enhanced = enhancer.enhance(1.2)
+        
+        # Show final enhanced image
+        st.write("Final enhanced image:")
+        st.image(enhanced, caption="Enhanced", width=200)
+        
+        return enhanced
+    except Exception as e:
+        st.error(f"Error preprocessing image: {str(e)}")
+        return image
 
 def standardize_conjunctiva_image(image):
    """Standardize the cropped conjunctiva image to match CP-AnemicC format"""
