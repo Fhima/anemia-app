@@ -4,247 +4,284 @@ st.set_page_config(page_title="Anemia Detection", layout="wide")
 import os
 import tensorflow as tf
 import numpy as np
-from PIL import Image, ImageDraw, ImageEnhance
+from PIL import Image, ImageDraw
 from tensorflow.keras.preprocessing.image import img_to_array
 import requests
+import cv2
 
 # Initialize session state
 if 'prediction_made' not in st.session_state:
-   st.session_state.prediction_made = False
+    st.session_state.prediction_made = False
 if 'conjunctiva_region' not in st.session_state:
-   st.session_state.conjunctiva_region = None
+    st.session_state.conjunctiva_region = None
 
 # Initialize Roboflow
 @st.cache_resource
 def load_roboflow():
-   return {
-       "api_url": "https://detect.roboflow.com",
-       "api_key": "g6W2V0dcNuMVTkygIv9G"
-   }
+    return {
+        "api_url": "https://detect.roboflow.com",
+        "api_key": "g6W2V0dcNuMVTkygIv9G"
+    }
 
 detector_model = load_roboflow()
 
-def preprocess_for_detection(image):
-   """Preprocess image to better match the training data format"""
-   try:
-       # Convert to RGB if needed
-       if image.mode == 'RGBA':
-           image = image.convert('RGB')
-           
-       # Do a gentler crop focusing on the lower eyelid
-       width, height = image.size
-       crop_height = int(height * 0.5)  # Increased from 0.3
-       crop_top = int(height * 0.3)     # Adjusted for better centering
-       
-       # Basic rectangular crop
-       cropped = image.crop((0, crop_top, width, crop_top + crop_height))
-       
-       # Enhance contrast slightly
-       enhancer = ImageEnhance.Contrast(cropped)
-       enhanced = enhancer.enhance(1.1)
-       
-       return enhanced
-   except Exception as e:
-       st.error(f"Error preprocessing image: {str(e)}")
-       return image
+def create_curved_mask(image, pred):
+    """Create a curved mask following the conjunctiva contour"""
+    try:
+        # Convert to numpy array
+        img_array = np.array(image)
+        height, width = img_array.shape[:2]
+        
+        # Get bbox center points
+        x = int(pred['x'] - pred['width']/2)
+        y = int(pred['y'] - pred['height']/2)
+        w = int(pred['width'])
+        h = int(pred['height'])
+        
+        # Create points for curve fitting
+        x_points = np.linspace(x, x + w, num=20)
+        # Create curved line following conjunctiva shape
+        y_curve = y + h/2 + h/4 * np.sin(np.pi * (x_points - x) / w)
+        
+        # Create mask
+        mask = np.zeros((height, width), dtype=np.uint8)
+        
+        # Convert points to polygon
+        curve_points = np.column_stack([x_points, y_curve])
+        # Add top curve
+        top_y = y_curve - h/2
+        top_curve = np.column_stack([x_points[::-1], top_y[::-1]])
+        # Combine points for complete shape
+        polygon_points = np.vstack([curve_points, top_curve])
+        
+        # Fill polygon
+        cv2.fillPoly(mask, [polygon_points.astype(np.int32)], 1)
+        
+        # Apply mask to image
+        masked_image = img_array.copy()
+        for c in range(3):
+            masked_image[:,:,c] = img_array[:,:,c] * mask
+            
+        return Image.fromarray(masked_image), mask, polygon_points
+    except Exception as e:
+        st.error(f"Error creating curved mask: {str(e)}")
+        return image, None, None
 
-def standardize_conjunctiva_image(image):
-   """Standardize the cropped conjunctiva image to match CP-AnemicC format"""
-   try:
-       # Convert to RGB if needed
-       if isinstance(image, np.ndarray):
-           image = Image.fromarray(image)
-       if image.mode != 'RGB':
-           image = image.convert('RGB')
-           
-       # Standardize size while maintaining aspect ratio
-       target_width = 160
-       aspect_ratio = image.width / image.height
-       target_height = int(target_width / aspect_ratio)
-       image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
-       
-       # Add padding if needed to match square input
-       if target_height != target_width:
-           new_img = Image.new('RGB', (target_width, target_width), (255, 255, 255))
-           paste_y = (target_width - target_height) // 2
-           new_img.paste(image, (0, paste_y))
-           image = new_img
-           
-       # Convert to numpy array
-       img_array = np.array(image)
-       
-       # Normalize colors
-       img_array = img_array.astype(np.float32)
-       img_array = img_array / 255.0
-       
-       return Image.fromarray((img_array * 255).astype(np.uint8))
-   except Exception as e:
-       st.error(f"Error standardizing image: {str(e)}")
-       return image
+def preprocess_for_detection(image):
+    """Preprocess image to better match the training data format"""
+    try:
+        # Convert to RGB if needed
+        if image.mode == 'RGBA':
+            image = image.convert('RGB')
+            
+        # Do a gentler crop focusing on the lower eyelid
+        width, height = image.size
+        crop_height = int(height * 0.5)
+        crop_top = int(height * 0.3)
+        
+        # Basic rectangular crop
+        cropped = image.crop((0, crop_top, width, crop_top + crop_height))
+        
+        return cropped
+    except Exception as e:
+        st.error(f"Error preprocessing image: {str(e)}")
+        return image
 
 def detect_conjunctiva(image):
-   try:
-       # Preprocess image
-       processed_image = preprocess_for_detection(image)
-       
-       # Save image temporarily
-       temp_path = "temp_image.jpg"
-       processed_image.save(temp_path)
-       
-       with open(temp_path, "rb") as image_file:
-           image_data = image_file.read()
-       
-       api_url = f"{detector_model['api_url']}/eye-conjunctiva-detector/2"
-       
-       # Make prediction request with adjusted parameters
-       response = requests.post(
-           api_url,
-           params={
-               "api_key": detector_model['api_key'],
-               "confidence": 30,  # Lower confidence threshold
-               "overlap": 50     # Increase overlap threshold
-           },
-           files={"file": ("image.jpg", open(temp_path, "rb"), "image/jpeg")}
-       )
-       
-       # Remove temp file
-       os.remove(temp_path)
-       
-       if response.status_code != 200:
-           st.error("Error connecting to detection service")
-           return None, None, None
-           
-       predictions = response.json()
-       
-       if not predictions.get('predictions'):
-           return None, None, None
-           
-       # Get the prediction with highest confidence
-       pred = max(predictions['predictions'], key=lambda x: x['confidence'])
-       
-       # Extract bbox with padding
-       x = int(pred['x'] - pred['width'])  # Double the width
-       y = int(pred['y'] - pred['height'])  # Double the height
-       w = int(pred['width'] * 2)
-       h = int(pred['height'] * 2)
-       
-       # Ensure coordinates are within image bounds
-       image_array = np.array(processed_image)
-       height, width = image_array.shape[:2]
-       x = max(0, x)
-       y = max(0, y)
-       w = min(width - x, w)
-       h = min(height - y, h)
-       
-       # Extract region
-       conjunctiva_region = image_array[y:y+h, x:x+w]
-       
-       # Create visualization
-       vis_image = processed_image.copy()
-       draw = ImageDraw.Draw(vis_image)
-       draw.rectangle([x, y, x+w, y+h], outline='green', width=3)
-       
-       return Image.fromarray(conjunctiva_region), vis_image, pred['confidence']
-       
-   except Exception as e:
-       st.error("Error during image processing")
-       return None, None, None
+    try:
+        # Preprocess image
+        processed_image = preprocess_for_detection(image)
+        
+        # Save image temporarily
+        temp_path = "temp_image.jpg"
+        processed_image.save(temp_path)
+        
+        with open(temp_path, "rb") as image_file:
+            image_data = image_file.read()
+        
+        api_url = f"{detector_model['api_url']}/eye-conjunctiva-detector/2"
+        
+        # Make prediction request with adjusted parameters
+        response = requests.post(
+            api_url,
+            params={
+                "api_key": detector_model['api_key'],
+                "confidence": 30,
+                "overlap": 50
+            },
+            files={"file": ("image.jpg", open(temp_path, "rb"), "image/jpeg")}
+        )
+        
+        # Remove temp file
+        os.remove(temp_path)
+        
+        if response.status_code != 200:
+            st.error("Error connecting to detection service")
+            return None, None, None
+            
+        predictions = response.json()
+        
+        if not predictions.get('predictions'):
+            return None, None, None
+            
+        # Get the prediction with highest confidence
+        pred = max(predictions['predictions'], key=lambda x: x['confidence'])
+        
+        # Create curved mask and get masked image
+        masked_image, mask, polygon_points = create_curved_mask(processed_image, pred)
+        
+        if mask is not None:
+            # Find masked region bounds
+            coords = cv2.findNonZero(mask)
+            x, y, w, h = cv2.boundingRect(coords)
+            conjunctiva_region = np.array(masked_image)[y:y+h, x:x+w]
+            
+            # Create visualization with curved outline
+            vis_image = processed_image.copy()
+            overlay = Image.new('RGBA', vis_image.size, (0,0,0,0))
+            draw = ImageDraw.Draw(overlay)
+            # Draw curved lines
+            draw.polygon(polygon_points.tolist(), outline='green', fill=(0,255,0,50))
+            vis_image = Image.alpha_composite(vis_image.convert('RGBA'), overlay)
+            
+            return Image.fromarray(conjunctiva_region), vis_image, pred['confidence']
+        
+        return None, None, None
+        
+    except Exception as e:
+        st.error("Error during image processing")
+        st.write("Error details:", str(e))
+        return None, None, None
+
+def standardize_conjunctiva_image(image):
+    """Standardize the cropped conjunctiva image to match CP-AnemicC format"""
+    try:
+        # Convert to RGB if needed
+        if isinstance(image, np.ndarray):
+            image = Image.fromarray(image)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+            
+        # Standardize size while maintaining aspect ratio
+        target_width = 160
+        aspect_ratio = image.width / image.height
+        target_height = int(target_width / aspect_ratio)
+        image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+        
+        # Add padding if needed to match square input
+        if target_height != target_width:
+            new_img = Image.new('RGB', (target_width, target_width), (255, 255, 255))
+            paste_y = (target_width - target_height) // 2
+            new_img.paste(image, (0, paste_y))
+            image = new_img
+            
+        # Convert to numpy array
+        img_array = np.array(image)
+        
+        # Normalize colors
+        img_array = img_array.astype(np.float32)
+        img_array = img_array / 255.0
+        
+        return Image.fromarray((img_array * 255).astype(np.uint8))
+    except Exception as e:
+        st.error(f"Error standardizing image: {str(e)}")
+        return image
 
 def load_model():
-   try:
-       model_path = 'models/final_anemia_model.keras'
-       if not os.path.exists(model_path):
-           st.error("Model file not found")
-           return None
-       return tf.keras.models.load_model(model_path)
-   except Exception as e:
-       st.error("Error loading anemia detection model")
-       return None
+    try:
+        model_path = 'models/final_anemia_model.keras'
+        if not os.path.exists(model_path):
+            st.error("Model file not found")
+            return None
+        return tf.keras.models.load_model(model_path)
+    except Exception as e:
+        st.error("Error loading anemia detection model")
+        return None
 
 def preprocess_image(image):
-   img = image if isinstance(image, Image.Image) else Image.open(image)
-   img = img.resize((160, 160))
-   img = img.convert('RGB')
-   img_array = img_to_array(img)
-   img_array = tf.keras.applications.efficientnet_v2.preprocess_input(img_array)
-   return np.expand_dims(img_array, axis=0)
+    img = image if isinstance(image, Image.Image) else Image.open(image)
+    img = img.resize((160, 160))
+    img = img.convert('RGB')
+    img_array = img_to_array(img)
+    img_array = tf.keras.applications.efficientnet_v2.preprocess_input(img_array)
+    return np.expand_dims(img_array, axis=0)
 
 def predict_anemia(model, image):
-   try:
-       # Standardize the conjunctiva image
-       standardized_img = standardize_conjunctiva_image(image)
-       
-       # Preprocess for model
-       img_processed = preprocess_image(standardized_img)
-       
-       # Get prediction
-       prediction = model.predict(img_processed)
-       confidence = abs(prediction[0][0] - 0.5) * 2
-       
-       return prediction[0][0] > 0.5, confidence
-   except Exception as e:
-       st.error(f"Error in anemia prediction: {str(e)}")
-       return None, None
+    try:
+        # Standardize the conjunctiva image
+        standardized_img = standardize_conjunctiva_image(image)
+        
+        # Preprocess for model
+        img_processed = preprocess_image(standardized_img)
+        
+        # Get prediction
+        prediction = model.predict(img_processed)
+        confidence = abs(prediction[0][0] - 0.5) * 2
+        
+        return prediction[0][0] > 0.5, confidence
+    except Exception as e:
+        st.error(f"Error in anemia prediction: {str(e)}")
+        return None, None
 
 # App UI
 st.title('Anemia Detection System')
 st.write('A medical screening tool that analyzes conjunctival images for potential anemia indicators.')
 
 with st.container():
-   st.markdown("""
-   ### Usage Instructions
-   1. Take a clear photograph focusing specifically on the lower eyelid area:
-      - Pull down the lower eyelid to clearly expose the inner surface
-      - Frame the photo to show mainly the conjunctiva (inner red/pink area)
-      - Minimize the amount of surrounding eye area in the frame
-   2. Ensure proper lighting:
-      - Use consistent, even lighting
-      - Avoid harsh shadows or reflections
-   3. Keep the eye steady and in focus
-   4. The photo should be similar to medical reference images of conjunctiva examinations
-   """)
+    st.markdown("""
+    ### Usage Instructions
+    1. Take a clear photograph focusing specifically on the lower eyelid area:
+       - Pull down the lower eyelid to clearly expose the inner surface
+       - Frame the photo to show mainly the conjunctiva (inner red/pink area)
+       - Minimize the amount of surrounding eye area in the frame
+    2. Ensure proper lighting:
+       - Use consistent, even lighting
+       - Avoid harsh shadows or reflections
+    3. Keep the eye steady and in focus
+    4. The photo should be similar to medical reference images of conjunctiva examinations
+    """)
 
 model = load_model()
 
 uploaded_file = st.file_uploader("Upload Eye Image", type=['jpg', 'jpeg', 'png'])
 
 if uploaded_file:
-   with st.spinner('Processing image...'):
-       image = Image.open(uploaded_file)
-       conjunctiva_region, detection_vis, confidence = detect_conjunctiva(image)
-   
-   if conjunctiva_region is None:
-       st.error("Could not detect conjunctiva. Please ensure the inner eyelid is clearly visible.")
-   else:
-       st.success(f"Conjunctiva detected (Confidence: {confidence:.1%})")
-       
-       st.subheader("Image Analysis")
-       col1, col2 = st.columns(2)
-       with col1:
-           st.image(detection_vis, caption='Region of Interest', use_container_width=True)
-       with col2:
-           st.image(conjunctiva_region, caption='Processed Region', use_container_width=True)
-       
-       st.session_state.conjunctiva_region = conjunctiva_region
-       
-       if st.button("Analyze for Anemia"):
-           st.session_state.prediction_made = True
+    with st.spinner('Processing image...'):
+        image = Image.open(uploaded_file)
+        conjunctiva_region, detection_vis, confidence = detect_conjunctiva(image)
+    
+    if conjunctiva_region is None:
+        st.error("Could not detect conjunctiva. Please ensure the inner eyelid is clearly visible.")
+    else:
+        st.success(f"Conjunctiva detected (Confidence: {confidence:.1%})")
+        
+        st.subheader("Image Analysis")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.image(detection_vis, caption='Region of Interest', use_container_width=True)
+        with col2:
+            st.image(conjunctiva_region, caption='Processed Region', use_container_width=True)
+        
+        st.session_state.conjunctiva_region = conjunctiva_region
+        
+        if st.button("Analyze for Anemia"):
+            st.session_state.prediction_made = True
 
-       if st.session_state.prediction_made:
-           try:
-               with st.spinner('Analyzing image...'):
-                   is_anemic, confidence = predict_anemia(model, st.session_state.conjunctiva_region)
-                   
-                   st.subheader('Analysis Results')
-                   if is_anemic:
-                       st.error(f'Potential anemia detected (Confidence: {confidence:.1%})')
-                   else:
-                       st.success(f'No indication of anemia (Confidence: {confidence:.1%})')
-                   
-                   st.warning('This is a screening tool only and should not replace professional medical diagnosis.')
-           except Exception as e:
-               st.error('Error during analysis')
-               st.session_state.prediction_made = False
+        if st.session_state.prediction_made:
+            try:
+                with st.spinner('Analyzing image...'):
+                    is_anemic, confidence = predict_anemia(model, st.session_state.conjunctiva_region)
+                    
+                    st.subheader('Analysis Results')
+                    if is_anemic:
+                        st.error(f'Potential anemia detected (Confidence: {confidence:.1%})')
+                    else:
+                        st.success(f'No indication of anemia (Confidence: {confidence:.1%})')
+                    
+                    st.warning('This is a screening tool only and should not replace professional medical diagnosis.')
+            except Exception as e:
+                st.error('Error during analysis')
+                st.session_state.prediction_made = False
 
 st.markdown("---")
 st.caption("Developed as a medical screening assistant. For research purposes only.")
