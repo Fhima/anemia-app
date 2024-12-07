@@ -24,72 +24,29 @@ def load_roboflow():
 
 detector_model = load_roboflow()
 
-def extract_curved_conjunctiva(image):
-   """Extract just the curved conjunctiva region using a mask"""
-   try:
-       # Convert to array for processing
-       img_array = np.array(image)
-       
-       # Create a mask in the shape of the conjunctiva (curved/smile shape)
-       height, width = img_array.shape[:2]
-       mask = np.zeros((height, width), dtype=np.uint8)
-       
-       # Calculate control points for curve
-       center_x = width // 2
-       center_y = height // 2
-       curve_height = height // 4
-       
-       # Create curved mask using numpy operations
-       x = np.arange(width)
-       y = np.arange(height)
-       X, Y = np.meshgrid(x, y)
-       
-       # Create a smile-shaped curve
-       curve = center_y + curve_height * np.sin(np.pi * (X - center_x) / width)
-       mask = (Y > curve - curve_height/2) & (Y < curve + curve_height/2)
-       
-       # Apply mask to image
-       result = img_array.copy()
-       for c in range(3):  # Apply to each color channel
-           result[:,:,c] = img_array[:,:,c] * mask
-           
-       # Convert back to PIL Image
-       masked_image = Image.fromarray(result)
-       
-       # Crop to non-zero region
-       bbox = masked_image.getbbox()
-       if bbox:
-           masked_image = masked_image.crop(bbox)
-           
-       return masked_image
-   except Exception as e:
-       st.error(f"Error in curved extraction: {str(e)}")
-       return image
-
 def preprocess_for_detection(image):
-    """Preprocess image to better match the training data format"""
-    try:
-        # Convert to RGB if needed
-        if image.mode == 'RGBA':
-            image = image.convert('RGB')
-            
-        # Do a gentler crop focusing on the lower eyelid
-        width, height = image.size
-        # Adjust these values to get a better crop of just the conjunctiva
-        crop_height = int(height * 0.3)  # Smaller crop height
-        crop_top = int(height * 0.4)     # Start a bit lower
-        
-        # Basic rectangular crop
-        cropped = image.crop((0, crop_top, width, crop_top + crop_height))
-        
-        # Enhance contrast slightly
-        enhancer = ImageEnhance.Contrast(cropped)
-        enhanced = enhancer.enhance(1.1)  # Reduced from 1.2 to be more subtle
-        
-        return enhanced
-    except Exception as e:
-        st.error(f"Error preprocessing image: {str(e)}")
-        return image
+   """Preprocess image to better match the training data format"""
+   try:
+       # Convert to RGB if needed
+       if image.mode == 'RGBA':
+           image = image.convert('RGB')
+           
+       # Do a gentler crop focusing on the lower eyelid
+       width, height = image.size
+       crop_height = int(height * 0.5)  # Increased from 0.3
+       crop_top = int(height * 0.3)     # Adjusted for better centering
+       
+       # Basic rectangular crop
+       cropped = image.crop((0, crop_top, width, crop_top + crop_height))
+       
+       # Enhance contrast slightly
+       enhancer = ImageEnhance.Contrast(cropped)
+       enhanced = enhancer.enhance(1.1)
+       
+       return enhanced
+   except Exception as e:
+       st.error(f"Error preprocessing image: {str(e)}")
+       return image
 
 def standardize_conjunctiva_image(image):
    """Standardize the cropped conjunctiva image to match CP-AnemicC format"""
@@ -101,7 +58,7 @@ def standardize_conjunctiva_image(image):
            image = image.convert('RGB')
            
        # Standardize size while maintaining aspect ratio
-       target_width = 160  # Match your model's input size
+       target_width = 160
        aspect_ratio = image.width / image.height
        target_height = int(target_width / aspect_ratio)
        image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
@@ -139,10 +96,14 @@ def detect_conjunctiva(image):
        
        api_url = f"{detector_model['api_url']}/eye-conjunctiva-detector/2"
        
-       # Make prediction request
+       # Make prediction request with adjusted parameters
        response = requests.post(
            api_url,
-           params={"api_key": detector_model['api_key']},
+           params={
+               "api_key": detector_model['api_key'],
+               "confidence": 30,  # Lower confidence threshold
+               "overlap": 50     # Increase overlap threshold
+           },
            files={"file": ("image.jpg", open(temp_path, "rb"), "image/jpeg")}
        )
        
@@ -161,11 +122,11 @@ def detect_conjunctiva(image):
        # Get the prediction with highest confidence
        pred = max(predictions['predictions'], key=lambda x: x['confidence'])
        
-       # Extract bbox
-       x = int(pred['x'] - pred['width']/2)
-       y = int(pred['y'] - pred['height']/2)
-       w = int(pred['width'])
-       h = int(pred['height'])
+       # Extract bbox with padding
+       x = int(pred['x'] - pred['width'])  # Double the width
+       y = int(pred['y'] - pred['height'])  # Double the height
+       w = int(pred['width'] * 2)
+       h = int(pred['height'] * 2)
        
        # Ensure coordinates are within image bounds
        image_array = np.array(processed_image)
@@ -212,9 +173,6 @@ def predict_anemia(model, image):
    try:
        # Standardize the conjunctiva image
        standardized_img = standardize_conjunctiva_image(image)
-       
-       # Show standardized image (for debugging)
-       st.image(standardized_img, caption="Standardized Image for Analysis", width=200)
        
        # Preprocess for model
        img_processed = preprocess_image(standardized_img)
