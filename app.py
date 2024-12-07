@@ -68,23 +68,23 @@ def create_curved_mask(image, pred, class_name):
         st.error(f"Error creating curved mask: {str(e)}")
         return None, None
 
-def preprocess_for_detection(image):
-    """Preprocess image to better match the training data format"""
+def preprocess_for_anemia_detection(image):
+    """Preprocess ROI exactly as done in training"""
     try:
-        # Convert to RGB if needed
-        if image.mode == 'RGBA':
-            image = image.convert('RGB')
-            
-        # Basic preprocessing
-        width, height = image.size
-        crop_height = int(height * 0.6)
-        crop_top = int(height * 0.2)
-        cropped = image.crop((0, crop_top, width, crop_top + crop_height))
+        # Convert to array
+        img_array = img_to_array(image)
         
-        return cropped
+        # Apply EfficientNetV2 preprocessing exactly as training
+        img_array = tf.keras.applications.efficientnet_v2.preprocess_input(img_array)
+        
+        # Apply similar color adjustments as training
+        img_array = tf.image.random_brightness(img_array, 0.12)
+        img_array = tf.image.random_contrast(img_array, 0.18, 1.18)
+        
+        return img_array
     except Exception as e:
-        st.error(f"Error preprocessing image: {str(e)}")
-        return image
+        st.error(f"Error in preprocessing: {str(e)}")
+        return None
 
 def detect_conjunctiva(image):
     try:
