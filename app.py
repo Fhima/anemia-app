@@ -4,7 +4,7 @@ st.set_page_config(page_title="Anemia Detection", layout="wide")
 import os
 import tensorflow as tf
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageEnhance
 from tensorflow.keras.preprocessing.image import img_to_array
 import requests
 
@@ -24,25 +24,72 @@ def load_roboflow():
 
 detector_model = load_roboflow()
 
+def extract_curved_conjunctiva(image):
+   """Extract just the curved conjunctiva region using a mask"""
+   try:
+       # Convert to array for processing
+       img_array = np.array(image)
+       
+       # Create a mask in the shape of the conjunctiva (curved/smile shape)
+       height, width = img_array.shape[:2]
+       mask = np.zeros((height, width), dtype=np.uint8)
+       
+       # Calculate control points for curve
+       center_x = width // 2
+       center_y = height // 2
+       curve_height = height // 4
+       
+       # Create curved mask using numpy operations
+       x = np.arange(width)
+       y = np.arange(height)
+       X, Y = np.meshgrid(x, y)
+       
+       # Create a smile-shaped curve
+       curve = center_y + curve_height * np.sin(np.pi * (X - center_x) / width)
+       mask = (Y > curve - curve_height/2) & (Y < curve + curve_height/2)
+       
+       # Apply mask to image
+       result = img_array.copy()
+       for c in range(3):  # Apply to each color channel
+           result[:,:,c] = img_array[:,:,c] * mask
+           
+       # Convert back to PIL Image
+       masked_image = Image.fromarray(result)
+       
+       # Crop to non-zero region
+       bbox = masked_image.getbbox()
+       if bbox:
+           masked_image = masked_image.crop(bbox)
+           
+       return masked_image
+   except Exception as e:
+       st.error(f"Error in curved extraction: {str(e)}")
+       return image
+
 def preprocess_for_detection(image):
-    """Preprocess image to better match the training data format"""
-    try:
-        # Convert to RGB if needed
-        if image.mode == 'RGBA':
-            image = image.convert('RGB')
-            
-        # Calculate dimensions for cropping focus area
-        width, height = image.size
-        crop_height = int(height * 0.6)  # Increased from 0.4 to 0.6 to capture more of the eye
-        crop_top = int(height * 0.3)     # Start higher up (changed from 0.5)
-        
-        # Crop to focus on lower eyelid region
-        cropped = image.crop((0, crop_top, width, crop_top + crop_height))
-        
-        return cropped
-    except Exception as e:
-        st.error(f"Error preprocessing image: {str(e)}")
-        return image
+   """Preprocess image to better match the training data format"""
+   try:
+       # Convert to RGB if needed
+       if image.mode == 'RGBA':
+           image = image.convert('RGB')
+           
+       # First do a rough crop to focus on eye area
+       width, height = image.size
+       crop_height = int(height * 0.8)
+       crop_top = int(height * 0.2)
+       rough_crop = image.crop((0, crop_top, width, crop_top + crop_height))
+       
+       # Then extract just the curved conjunctiva region
+       curved_crop = extract_curved_conjunctiva(rough_crop)
+       
+       # Enhance contrast slightly
+       enhancer = ImageEnhance.Contrast(curved_crop)
+       enhanced = enhancer.enhance(1.2)
+       
+       return enhanced
+   except Exception as e:
+       st.error(f"Error preprocessing image: {str(e)}")
+       return image
 
 def standardize_conjunctiva_image(image):
    """Standardize the cropped conjunctiva image to match CP-AnemicC format"""
