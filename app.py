@@ -73,34 +73,18 @@ def preprocess_for_detection(image):
         if image.mode == 'RGBA':
             image = image.convert('RGB')
             
-        # Show original image
-        st.write("Original Image:")
-        st.image(image, caption="Original", width=200)
-            
-        # First do a rough crop to focus on eye area
+        # Do a gentler crop focusing on the lower eyelid
         width, height = image.size
-        crop_height = int(height * 0.8)
-        crop_top = int(height * 0.2)
-        rough_crop = image.crop((0, crop_top, width, crop_top + crop_height))
+        # Adjust these values to get a better crop of just the conjunctiva
+        crop_height = int(height * 0.3)  # Smaller crop height
+        crop_top = int(height * 0.4)     # Start a bit lower
         
-        # Show rough crop
-        st.write("After rough crop:")
-        st.image(rough_crop, caption="Rough Crop", width=200)
-        
-        # Then extract just the curved conjunctiva region
-        curved_crop = extract_curved_conjunctiva(rough_crop)
-        
-        # Show curved crop
-        st.write("After curved crop:")
-        st.image(curved_crop, caption="Curved Crop", width=200)
+        # Basic rectangular crop
+        cropped = image.crop((0, crop_top, width, crop_top + crop_height))
         
         # Enhance contrast slightly
-        enhancer = ImageEnhance.Contrast(curved_crop)
-        enhanced = enhancer.enhance(1.2)
-        
-        # Show final enhanced image
-        st.write("Final enhanced image:")
-        st.image(enhanced, caption="Enhanced", width=200)
+        enhancer = ImageEnhance.Contrast(cropped)
+        enhanced = enhancer.enhance(1.1)  # Reduced from 1.2 to be more subtle
         
         return enhanced
     except Exception as e:
