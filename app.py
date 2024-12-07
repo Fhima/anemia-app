@@ -38,15 +38,22 @@ def create_curved_mask(image, pred, class_name):
         w = int(pred['width'])
         h = int(pred['height'])
         
-        # Create more natural crescent shape points
+        # Create more pronounced crescent shape points
         num_points = 100
         x_points = np.linspace(x, x + w, num_points)
         
-        # Bottom curve (deeper curve matching training data)
-        bottom_curve = y + h/2 + h/3 * np.sin(np.pi * (x_points - x) / w)
+        # Bottom curve (more pronounced curve)
+        curve_height_bottom = h/2.5  # Increased curve height
+        bottom_curve = y + h/2 + curve_height_bottom * np.sin(np.pi * (x_points - x) / w)
         
-        # Top curve (shallower curve matching training data)
-        top_curve = y + h/2 - h/4 * np.sin(np.pi * (x_points - x) / w)
+        # Top curve (much flatter)
+        curve_height_top = h/5  # Reduced curve height for top
+        top_curve = y + h/2 - curve_height_top * np.sin(np.pi * (x_points - x) / w)
+        
+        # Taper the ends more
+        taper = np.sqrt(np.sin(np.pi * (x_points - x) / w))  # Creates more pointed ends
+        bottom_curve = bottom_curve * taper
+        top_curve = top_curve * taper
         
         # Create polygon points for mask
         polygon_points = np.vstack([
