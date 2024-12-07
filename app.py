@@ -11,158 +11,141 @@ import cv2
 
 # Initialize session state
 if 'prediction_made' not in st.session_state:
-   st.session_state.prediction_made = False
+    st.session_state.prediction_made = False
 if 'conjunctiva_region' not in st.session_state:
-   st.session_state.conjunctiva_region = None
+    st.session_state.conjunctiva_region = None
 
 # Initialize Roboflow
 @st.cache_resource
 def load_roboflow():
-   return {
-       "api_url": "https://detect.roboflow.com",
-       "api_key": "g6W2V0dcNuMVTkygIv9G"
-   }
+    return {
+        "api_url": "https://detect.roboflow.com",
+        "api_key": "g6W2V0dcNuMVTkygIv9G"
+    }
 
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-   """Create a curved mask following the conjunctiva contour"""
-   try:
-       # Convert to numpy array
-       img_array = np.array(image)
-       height, width = img_array.shape[:2]
-       
-       # Get bbox center points
-       x = int(pred['x'] - pred['width']/2)
-       y = int(pred['y'] - pred['height']/2)
-       w = int(pred['width'])
-       h = int(pred['height'])
-       
-       # Adjust curve parameters based on class
-       if class_name == 'forniceal_palpebral':
-           curve_height = h/3
-       elif class_name == 'palpebral':
-           curve_height = h/4
-       else:
-           curve_height = h/3.5
-       
-       # Create points for curve fitting
-       x_points = np.linspace(x, x + w, num=50)
-       # Create curved line following conjunctiva shape
-       y_curve = y + h/2 + curve_height * np.sin(np.pi * (x_points - x) / w)
-       
-       # Create top curve with less curvature
-       y_top = y + h/2 - curve_height * np.sin(np.pi * (x_points - x) / w) * 0.7
-       
-       # Combine points for complete shape
-       curve_points = np.column_stack([x_points, y_curve])
-       top_points = np.column_stack([x_points[::-1], y_top[::-1]])
-       polygon_points = np.vstack([curve_points, top_points])
-       
-       # Create mask
-       mask = np.zeros((height, width), dtype=np.uint8)
-       cv2.fillPoly(mask, [polygon_points.astype(np.int32)], 1)
-       
-       return mask, polygon_points
-   except Exception as e:
-       st.error(f"Error creating curved mask: {str(e)}")
-       return None, None
-
-def preprocess_for_detection(image):
-   """Preprocess image for detection"""
-   try:
-       # Convert to RGB if needed
-       if image.mode == 'RGBA':
-           image = image.convert('RGB')
-           
-       # Basic preprocessing
-       width, height = image.size
-       crop_height = int(height * 0.6)
-       crop_top = int(height * 0.2)
-       cropped = image.crop((0, crop_top, width, crop_top + crop_height))
-       
-       return cropped
-   except Exception as e:
-       st.error(f"Error preprocessing image: {str(e)}")
-       return image
+    """Create a curved mask following the conjunctiva contour"""
+    try:
+        # Convert to numpy array
+        img_array = np.array(image)
+        height, width = img_array.shape[:2]
+        
+        # Get bbox center points
+        x = int(pred['x'] - pred['width']/2)
+        y = int(pred['y'] - pred['height']/2)
+        w = int(pred['width'])
+        h = int(pred['height'])
+        
+        # Create more natural crescent shape points
+        num_points = 100
+        x_points = np.linspace(x, x + w, num_points)
+        
+        # Bottom curve (deeper curve matching training data)
+        bottom_curve = y + h/2 + h/3 * np.sin(np.pi * (x_points - x) / w)
+        
+        # Top curve (shallower curve matching training data)
+        top_curve = y + h/2 - h/4 * np.sin(np.pi * (x_points - x) / w)
+        
+        # Create polygon points for mask
+        polygon_points = np.vstack([
+            np.column_stack([x_points, bottom_curve]),
+            np.column_stack([x_points[::-1], top_curve[::-1]])
+        ])
+        
+        # Create binary mask
+        mask = np.zeros((height, width), dtype=np.uint8)
+        cv2.fillPoly(mask, [polygon_points.astype(np.int32)], 255)
+        
+        return mask, polygon_points
+    except Exception as e:
+        st.error(f"Error creating curved mask: {str(e)}")
+        return None, None
 
 def detect_conjunctiva(image):
-   try:
-       # Preprocess image
-       processed_image = preprocess_for_detection(image)
+    try:
+        # Basic preprocessing
+        processed_image = image
+        if image.mode == 'RGBA':
+            processed_image = image.convert('RGB')
+        
+        # Save image temporarily
+        temp_path = "temp_image.jpg"
+        processed_image.save(temp_path)
+        
+        with open(temp_path, "rb") as image_file:
+            image_data = image_file.read()
+        
+        api_url = f"{detector_model['api_url']}/eye-conjunctiva-detector/2"
+        
+        # Make prediction request
+        response = requests.post(
+            api_url,
+            params={
+                "api_key": detector_model['api_key'],
+                "confidence": 30,
+                "overlap": 50
+            },
+            files={"file": ("image.jpg", open(temp_path, "rb"), "image/jpeg")}
+        )
+        
+        # Remove temp file
+        os.remove(temp_path)
+        
+        if response.status_code != 200:
+            st.error("Error connecting to detection service")
+            return None, None, None
+            
+        predictions = response.json()
+        
+        if not predictions.get('predictions'):
+            return None, None, None
+            
+        # Get the prediction with highest confidence
+        pred = max(predictions['predictions'], key=lambda x: x['confidence'])
+        class_name = pred['class']
+        
+        # Create curved mask
+        mask, polygon_points = create_curved_mask(processed_image, pred, class_name)
+        
+        if mask is not None and polygon_points is not None:
+            # Create RGBA version for transparent background
+            img_array = np.array(processed_image)
+            rgba = cv2.cvtColor(img_array, cv2.COLOR_RGB2RGBA)
+            
+            # Apply mask
+            rgba[mask == 0] = [0, 0, 0, 0]
+            
+            # Find bounds of non-zero (non-transparent) region
+            coords = cv2.findNonZero(mask)
+            x, y, w, h = cv2.boundingRect(coords)
+            
+            # Extract conjunctiva region with transparency
+            conjunctiva_region = rgba[y:y+h, x:x+w]
+            
+            # Create visualization with curved outline
+            vis_image = processed_image.copy()
+            vis_array = np.array(vis_image)
+            
+            # Draw filled polygon with transparency
+            overlay = vis_array.copy()
+            cv2.fillPoly(overlay, [polygon_points.astype(np.int32)], (0, 255, 0))
+            alpha = 0.3
+            vis_array = cv2.addWeighted(overlay, alpha, vis_array, 1 - alpha, 0)
+            
+            # Draw outline
+            cv2.polylines(vis_array, [polygon_points.astype(np.int32)], True, (0, 255, 0), 2)
+            
+            return Image.fromarray(conjunctiva_region), Image.fromarray(vis_array), pred['confidence']
+        
+        return None, None, None
+        
+    except Exception as e:
+        st.error("Error during image processing")
+        st.write("Error details:", str(e))
+        return None, None, None
        
-       # Save image temporarily
-       temp_path = "temp_image.jpg"
-       processed_image.save(temp_path)
-       
-       with open(temp_path, "rb") as image_file:
-           image_data = image_file.read()
-       
-       api_url = f"{detector_model['api_url']}/eye-conjunctiva-detector/2"
-       
-       # Make prediction request
-       response = requests.post(
-           api_url,
-           params={
-               "api_key": detector_model['api_key'],
-               "confidence": 30,
-               "overlap": 50
-           },
-           files={"file": ("image.jpg", open(temp_path, "rb"), "image/jpeg")}
-       )
-       
-       # Remove temp file
-       os.remove(temp_path)
-       
-       if response.status_code != 200:
-           st.error("Error connecting to detection service")
-           return None, None, None
-           
-       predictions = response.json()
-       
-       if not predictions.get('predictions'):
-           return None, None, None
-           
-       # Get the prediction with highest confidence
-       pred = max(predictions['predictions'], key=lambda x: x['confidence'])
-       class_name = pred['class']
-       
-       # Create curved mask
-       mask, polygon_points = create_curved_mask(processed_image, pred, class_name)
-       
-       if mask is not None and polygon_points is not None:
-           # Apply mask to image
-           img_array = np.array(processed_image)
-           masked_image = img_array.copy()
-           for c in range(3):
-               masked_image[:,:,c] = img_array[:,:,c] * mask
-           
-           # Find masked region bounds
-           coords = cv2.findNonZero(mask)
-           x, y, w, h = cv2.boundingRect(coords)
-           conjunctiva_region = masked_image[y:y+h, x:x+w]
-           
-           # Create visualization with curved outline
-           vis_image = processed_image.copy()
-           vis_array = np.array(vis_image)
-           
-           # Draw filled polygon with transparency
-           overlay = vis_array.copy()
-           cv2.fillPoly(overlay, [polygon_points.astype(np.int32)], (0, 255, 0))
-           alpha = 0.3
-           vis_array = cv2.addWeighted(overlay, alpha, vis_array, 1 - alpha, 0)
-           
-           # Draw outline
-           cv2.polylines(vis_array, [polygon_points.astype(np.int32)], True, (0, 255, 0), 2)
-           
-           return Image.fromarray(conjunctiva_region), Image.fromarray(vis_array), pred['confidence']
-       
-       return None, None, None
-       
-   except Exception as e:
-       st.error("Error during image processing")
-       return None, None, None
-
 def preprocess_for_anemia_detection(image):
    """Preprocess ROI exactly as done in training"""
    try:
