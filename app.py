@@ -26,52 +26,50 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a downward-pointing crescent-shaped mask with refined proportions"""
+    """Create a wider, more inclusive crescent-shaped mask for better conjunctiva coverage"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
         
-        # Get bbox center points and ensure they're valid
+        # Get bbox center points with expanded width
         x = max(0, int(pred['x'] - pred['width']/2))
         y = max(0, int(pred['y'] - pred['height']/2))
-        w = min(width - x, int(pred['width']))
-        h = min(height - y, int(pred['height']))
+        w = min(width - x, int(pred['width'] * 1.2))  # Increased width coverage
+        h = min(height - y, int(pred['height'] * 1.1))  # Slightly increased height
         
         if w <= 0 or h <= 0:
             return None, None
             
         # Create points for the crescent shape
-        num_points = 150  # Increased for smoother curves
+        num_points = 150
         x_points = np.linspace(x, x + w, num_points)
         
-        # Adjusted parameters for better proportions
+        # Adjusted parameters for fuller shape
         center_y = y + h/2
-        amplitude = h/3.2  # Reduced amplitude for thinner crescent
+        amplitude = h/2.8  # Increased amplitude for fuller shape
         
         # Create curves with adjusted parameters
         angle = np.pi * (x_points - x) / w
         sin_values = np.sin(angle)
         sin_values = np.clip(sin_values, 0, 1)
         
-        # Upper curve with slightly more amplitude
-        upper_curve = center_y + amplitude * 1.2 * sin_values
+        # Wider separation between curves
+        upper_curve = center_y + amplitude * 1.4 * sin_values  # Increased multiplier
+        lower_curve = center_y + (amplitude * 0.6) * sin_values  # Decreased multiplier
         
-        # Lower curve with slightly less amplitude
-        lower_curve = center_y + (amplitude * 0.8) * sin_values
+        # Gentler tapering for wider ends
+        taper = np.power(sin_values, 0.4)  # Reduced power for wider shape
         
-        # Enhanced tapering for more natural ends
-        taper = np.power(sin_values, 0.6)  # Adjusted power for smoother tapering
-        
-        # Apply tapering with adjusted ratios
+        # Apply gradual tapering
         curve_diff = upper_curve - lower_curve
         upper_curve = lower_curve + curve_diff * taper
         
-        # Add slight asymmetry for more natural look
-        asymmetry = np.sin(2 * np.pi * (x_points - x) / w) * (h/20)
-        upper_curve += asymmetry
-        lower_curve += asymmetry
+        # Add subtle height variation
+        variation = np.sin(3 * np.pi * (x_points - x) / w) * (h/25)
+        upper_curve += variation
+        lower_curve += variation
         
-        # Stack points with adjusted order
+        # Create final points
         points = np.vstack([
             np.column_stack([x_points, upper_curve]),
             np.column_stack([x_points[::-1], lower_curve[::-1]])
@@ -93,7 +91,7 @@ def create_curved_mask(image, pred, class_name):
     except Exception as e:
         st.error(f"Error creating curved mask: {str(e)}")
         return None, None
-
+        
 def detect_conjunctiva(image):
     try:
         # Basic preprocessing
