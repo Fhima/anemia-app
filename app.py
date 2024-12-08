@@ -227,29 +227,24 @@ def load_model():
         return None
 
 def predict_anemia(model, image):
-    """Predict anemia with class weights considered"""
+    """Predict anemia with class weights and threshold"""
     try:
-        # Preprocess exactly as training
+        # Preprocess
         img_array = preprocess_for_anemia_detection(image)
         if img_array is None:
             return None, None
             
-        # Get raw prediction
-        prediction = model.predict(img_array)
+        # Get model prediction (single value between 0-1)
+        pred = model.predict(img_array)[0][0]
         
-        # Apply class weights in inference
-        non_anemic_prob = prediction[0][0] * 1.2  # Non-anemic class weight
-        anemic_prob = (1 - prediction[0][0]) * 0.9  # Anemic class weight
+        # Apply weights and calculate normalized probability
+        weighted_ratio = (pred * 1.2) / ((pred * 1.2) + ((1 - pred) * 0.9))
         
-        # Normalize probabilities
-        total = non_anemic_prob + anemic_prob
-        non_anemic_prob = non_anemic_prob / total
-        anemic_prob = anemic_prob / total
+        # Classify with threshold and return confidence
+        is_anemic = weighted_ratio < 0.15  # Equivalent to anemic_prob > 0.85
+        confidence = max(weighted_ratio, 1 - weighted_ratio)
         
-        # Calculate confidence
-        confidence = max(non_anemic_prob, anemic_prob)
-        
-        return anemic_prob > 0.85, confidence
+        return is_anemic, confidence
         
     except Exception as e:
         st.error(f"Error in prediction: {str(e)}")
