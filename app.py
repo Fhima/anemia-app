@@ -228,7 +228,7 @@ def predict_anemia(model, image):
         weighted_ratio = (pred * 1.2) / ((pred * 1.2) + ((1 - pred) * 0.9))
         
         # Classify with threshold and return confidence
-        is_anemic = weighted_ratio < 0.15  # Equivalent to anemic_prob > 0.85
+        is_anemic = weighted_ratio < 0.45  # Equivalent to anemic_prob > 0.85
         confidence = max(weighted_ratio, 1 - weighted_ratio)
         
         return is_anemic, confidence
