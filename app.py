@@ -26,7 +26,7 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a symmetrical crescent moon shaped mask"""
+    """Create an anatomically-accurate conjunctiva mask with natural curves"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
@@ -37,32 +37,59 @@ def create_curved_mask(image, pred, class_name):
         w = int(pred['width'])
         h = int(pred['height'])
         
-        # Create points for the crescent shape
-        num_points = 100
+        # Create base points for the more complex shape
+        num_points = 200  # Increased for smoother curves
         x_points = np.linspace(x, x + w, num_points)
         
-        # Center point for both curves
+        # Center point
         center_y = y + h/2
         
-        # More pronounced curves with equal amplitude
-        curve_height = h/2.2  # Increased height for more pronounced curve
+        # Parameters for natural curvature
+        upper_amp = h/2.8  # Upper curve amplitude
+        lower_amp = h/2.2  # Lower curve amplitude (deeper)
         
-        # Bottom curve
-        bottom_curve = center_y + curve_height * np.sin(np.pi * (x_points - x) / w)
+        # Create asymmetric curves
+        # Upper curve with slight forward tilt
+        phase_shift = np.pi/6  # Adjust tilt
+        upper_curve = center_y - upper_amp * np.sin(np.pi * (x_points - x) / w + phase_shift)
         
-        # Top curve (mirrored from bottom)
-        top_curve = center_y - curve_height * np.sin(np.pi * (x_points - x) / w)
+        # Lower curve with more pronounced dip
+        lower_curve = center_y + lower_amp * np.power(np.sin(np.pi * (x_points - x) / w), 1.2)
         
-        # Add tapering at the ends
-        taper = np.power(np.sin(np.pi * (x_points - x) / w), 0.5)  # Sharper taper
-        bottom_curve = center_y + (bottom_curve - center_y) * taper
-        top_curve = center_y + (top_curve - center_y) * taper
+        # Add natural tapering at ends
+        taper_start = np.power(np.sin(np.pi * (x_points - x) / w), 0.7)
+        taper_end = np.power(np.cos(np.pi * (x_points - x) / w), 0.5)
         
-        # Create polygon points
-        polygon_points = np.vstack([
-            np.column_stack([x_points, bottom_curve]),
-            np.column_stack([x_points[::-1], top_curve[::-1]])
-        ])
+        # Apply tapering differently to upper and lower curves
+        upper_curve = center_y + (upper_curve - center_y) * taper_start
+        lower_curve = center_y + (lower_curve - center_y) * taper_end
+        
+        # Add slight asymmetry
+        asymmetry = np.sin(2 * np.pi * (x_points - x) / w) * h/10
+        upper_curve += asymmetry
+        lower_curve += asymmetry
+        
+        # Create polygon points with additional control points
+        polygon_points = []
+        
+        # Add points for smoother curve
+        polygon_points.extend(np.column_stack([x_points, lower_curve]))
+        
+        # Add corner control points
+        polygon_points.append([x + w, center_y + h/4])
+        polygon_points.append([x + w + w/10, center_y])
+        polygon_points.append([x + w, center_y - h/4])
+        
+        # Add upper curve points in reverse
+        polygon_points.extend(np.column_stack([x_points[::-1], upper_curve[::-1]]))
+        
+        # Add left side control points
+        polygon_points.append([x, center_y - h/4])
+        polygon_points.append([x - w/10, center_y])
+        polygon_points.append([x, center_y + h/4])
+        
+        # Convert to numpy array
+        polygon_points = np.array(polygon_points)
         
         # Create mask
         mask = np.zeros((height, width), dtype=np.uint8)
