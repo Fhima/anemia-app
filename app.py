@@ -249,7 +249,7 @@ def predict_anemia(model, image):
         # Calculate confidence
         confidence = max(non_anemic_prob, anemic_prob)
         
-        return anemic_prob > 0.8, confidence
+        return anemic_prob > 0.85, confidence
         
     except Exception as e:
         st.error(f"Error in prediction: {str(e)}")
