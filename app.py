@@ -26,7 +26,7 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a crescent-shaped mask with even higher center point"""
+    """Create a crescent-shaped mask matching training data characteristics"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
@@ -34,7 +34,7 @@ def create_curved_mask(image, pred, class_name):
         # Get bbox center points with adjusted dimensions
         x = max(0, int(pred['x'] - pred['width']/2))
         y = max(0, int(pred['y'] - pred['height']/2))
-        w = min(width - x, int(pred['width'] * 0.9))
+        w = min(width - x, int(pred['width'] * 0.85))  # Slightly narrower
         h = min(height - y, int(pred['height'] * 1.5))
         
         if w <= 0 or h <= 0:
@@ -44,21 +44,21 @@ def create_curved_mask(image, pred, class_name):
         num_points = 150
         x_points = np.linspace(x, x + w, num_points)
         
-        # Move center point even higher
-        center_y = y + h/5.0  # Changed from 4.0 to 5.0 for even higher center
-        amplitude = h/2.4     # Slightly increased amplitude
+        # Adjusted parameters to match training data shape
+        center_y = y + h/5.5  # Higher center point
+        amplitude = h/2.2  # Adjusted amplitude
         
-        # Create curves
+        # Create curves with training-like proportions
         angle = np.pi * (x_points - x) / w
         sin_values = np.sin(angle)
         sin_values = np.clip(sin_values, 0, 1)
         
-        # Adjusted curve proportions slightly
-        upper_curve = center_y + amplitude * 1.4 * sin_values  # Increased upper multiplier
-        lower_curve = center_y + (amplitude * 0.6) * sin_values  # Decreased lower multiplier
+        # Adjusted curve proportions to match training data
+        upper_curve = center_y + amplitude * 1.5 * sin_values  # More pronounced upper curve
+        lower_curve = center_y + (amplitude * 0.5) * sin_values  # Thinner lower curve
         
-        # Keep same tapering
-        taper = np.power(sin_values, 0.4)
+        # Enhanced tapering for training-like ends
+        taper = np.power(sin_values, 0.35)  # Softer tapering
         
         # Apply tapering
         curve_diff = upper_curve - lower_curve
@@ -171,17 +171,27 @@ def detect_conjunctiva(image):
         return None, None, None
 
 def preprocess_for_anemia_detection(image):
-    """Preprocess ROI exactly as done in training"""
+    """Preprocess ROI to exactly match training data characteristics"""
     try:
         # Ensure image is RGB
         if image.mode != 'RGB':
             image = image.convert('RGB')
             
-        # Resize to exact training dimensions
-        image = image.resize((160, 160))
+        # First crop to remove any potential black borders
+        img_array = np.array(image)
+        mask = np.any(img_array != 0, axis=2)
+        coords = np.argwhere(mask)
+        y_min, x_min = coords.min(axis=0)
+        y_max, x_max = coords.max(axis=0)
+        cropped_array = img_array[y_min:y_max+1, x_min:x_max+1]
         
-        # Convert to array and preprocess as in training
+        # Convert back to PIL and resize
+        cropped_image = Image.fromarray(cropped_array)
+        image = cropped_image.resize((160, 160))
+        
+        # Convert to array and preprocess
         img_array = img_to_array(image)
+        img_array = tf.cast(img_array, tf.float32)
         img_array = tf.keras.applications.efficientnet_v2.preprocess_input(img_array)
         
         # Add batch dimension
@@ -204,27 +214,30 @@ def load_model():
         return None
 
 def predict_anemia(model, image):
+    """Predict anemia with class weights considered"""
     try:
         # Preprocess exactly as training
         img_array = preprocess_for_anemia_detection(image)
         if img_array is None:
             return None, None
             
-        # Get prediction
+        # Get raw prediction
         prediction = model.predict(img_array)
         
         # Apply class weights in inference
-        anemic_prob = prediction[0][0] * 0.9  # Anemic class weight
-        non_anemic_prob = (1 - prediction[0][0]) * 1.2  # Non-anemic class weight
+        non_anemic_prob = prediction[0][0] * 1.2  # Non-anemic class weight
+        anemic_prob = (1 - prediction[0][0]) * 0.9  # Anemic class weight
         
         # Normalize probabilities
-        total = anemic_prob + non_anemic_prob
+        total = non_anemic_prob + anemic_prob
+        non_anemic_prob = non_anemic_prob / total
         anemic_prob = anemic_prob / total
         
         # Calculate confidence
-        confidence = abs(anemic_prob - 0.5) * 2
+        confidence = max(non_anemic_prob, anemic_prob)
         
         return anemic_prob > 0.5, confidence
+        
     except Exception as e:
         st.error(f"Error in prediction: {str(e)}")
         return None, None
