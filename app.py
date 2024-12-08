@@ -26,26 +26,18 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a standardized crescent-shaped mask for conjunctiva"""
+    """Create an upturned crescent-shaped mask for conjunctiva"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
         
-        # Calculate standard proportions based on eye width
+        # Get bbox center points with moderate upward shift
         x = max(0, int(pred['x'] - pred['width']/2))
-        y = max(0, int(pred['y'] - pred['height']/2))
+        y = max(0, int(pred['y'] - pred['height']/2)) - int(pred['height']/5)  # Consistent upward shift
         
-        # Standardize dimensions relative to detection box
-        standard_width = pred['width']
-        standard_height = pred['height'] * 0.4  # Limit height to 40% of eye height
-        
-        # Calculate fixed working area
-        w = min(width - x, int(standard_width * 0.8))  # 80% of eye width
-        h = min(height - y, int(standard_height))
-        
-        # Fixed vertical offset based on eye height
-        y_offset = int(pred['height'] * 0.2)  # 20% of eye height
-        y = y + y_offset
+        # Keep working proportions
+        w = min(width - x, int(pred['width'] * 1.1))
+        h = min(height - y, int(pred['height'] * 1.4))
         
         if w <= 0 or h <= 0:
             return None, None
@@ -54,27 +46,27 @@ def create_curved_mask(image, pred, class_name):
         num_points = 150
         x_points = np.linspace(x, x + w, num_points)
         
-        # Fixed proportions for curve
-        center_y = y + h/2
-        amplitude = h/3.0  # Fixed amplitude ratio
+        # Keep successful parameters from before
+        center_y = y + h/4.2
+        amplitude = h/2.4
         
-        # Create standardized curves
+        # Create curves with restored orientation
         angle = np.pi * (x_points - x) / w
         sin_values = np.sin(angle)
         sin_values = np.clip(sin_values, 0, 1)
         
-        # Fixed curve proportions
-        upper_curve = center_y + amplitude * sin_values
-        lower_curve = center_y - amplitude * sin_values
+        # Return to successful curve proportions
+        upper_curve = center_y + amplitude * 1.5 * sin_values  # Upper curve
+        lower_curve = center_y + (amplitude * 0.6) * sin_values  # Lower curve
         
-        # Standard tapering
-        taper = np.power(sin_values, 0.5)
+        # Keep successful tapering
+        taper = np.power(sin_values, 0.45)
         
         # Apply tapering
         curve_diff = upper_curve - lower_curve
         upper_curve = lower_curve + curve_diff * taper
         
-        # Create final points
+        # Create final points with original orientation
         points = np.vstack([
             np.column_stack([x_points, upper_curve]),
             np.column_stack([x_points[::-1], lower_curve[::-1]])
