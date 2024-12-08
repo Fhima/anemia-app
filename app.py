@@ -26,16 +26,16 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a wider, more inclusive crescent-shaped mask for better conjunctiva coverage"""
+    """Create a crescent-shaped mask with enhanced vertical coverage"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
         
-        # Get bbox center points with expanded width
+        # Get bbox center points with expanded vertical coverage only
         x = max(0, int(pred['x'] - pred['width']/2))
         y = max(0, int(pred['y'] - pred['height']/2))
-        w = min(width - x, int(pred['width'] * 1.2))  # Increased width coverage
-        h = min(height - y, int(pred['height'] * 1.1))  # Slightly increased height
+        w = min(width - x, int(pred['width']))
+        h = min(height - y, int(pred['height'] * 1.5))  # Only change: increased vertical coverage
         
         if w <= 0 or h <= 0:
             return None, None
@@ -44,30 +44,25 @@ def create_curved_mask(image, pred, class_name):
         num_points = 150
         x_points = np.linspace(x, x + w, num_points)
         
-        # Adjusted parameters for fuller shape
+        # Parameters for crescent shape
         center_y = y + h/2
-        amplitude = h/2.8  # Increased amplitude for fuller shape
+        amplitude = h/2.8
         
-        # Create curves with adjusted parameters
+        # Create curves
         angle = np.pi * (x_points - x) / w
         sin_values = np.sin(angle)
         sin_values = np.clip(sin_values, 0, 1)
         
-        # Wider separation between curves
-        upper_curve = center_y + amplitude * 1.4 * sin_values  # Increased multiplier
-        lower_curve = center_y + (amplitude * 0.6) * sin_values  # Decreased multiplier
+        # Create upper and lower curves
+        upper_curve = center_y + amplitude * 1.4 * sin_values
+        lower_curve = center_y + (amplitude * 0.6) * sin_values
         
-        # Gentler tapering for wider ends
-        taper = np.power(sin_values, 0.4)  # Reduced power for wider shape
+        # Tapering
+        taper = np.power(sin_values, 0.4)
         
-        # Apply gradual tapering
+        # Apply tapering
         curve_diff = upper_curve - lower_curve
         upper_curve = lower_curve + curve_diff * taper
-        
-        # Add subtle height variation
-        variation = np.sin(3 * np.pi * (x_points - x) / w) * (h/25)
-        upper_curve += variation
-        lower_curve += variation
         
         # Create final points
         points = np.vstack([
