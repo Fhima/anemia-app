@@ -26,7 +26,7 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a crescent-shaped mask with both curves turning upward"""
+    """Create a downward-pointing crescent-shaped mask matching conjunctiva anatomy"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
@@ -45,23 +45,23 @@ def create_curved_mask(image, pred, class_name):
         x_points = np.linspace(x, x + w, num_points)
         
         # Parameters for crescent shape
-        center_y = y + h/1.5
-        amplitude = h/2
+        center_y = y + h/2  # Center point
+        amplitude = h/2.5   # Reduced amplitude for less extreme curves
         
-        # Create two upward-turning curves
+        # Create two downward-turning curves
         angle = np.pi * (x_points - x) / w
         sin_values = np.sin(angle)
         
         # Ensure sin_values are valid for power operation
         sin_values = np.clip(sin_values, 0, 1)
         
-        # Outer (lower) curve
-        outer_curve = center_y - amplitude * sin_values
+        # Outer (upper) curve - now curves downward
+        outer_curve = center_y + amplitude * sin_values
         
-        # Inner (upper) curve
-        inner_curve = (center_y - h/3) - (amplitude/1.5) * sin_values
+        # Inner (lower) curve - also curves downward but with less amplitude
+        inner_curve = center_y + (amplitude/2) * sin_values
         
-        # Calculate taper with clipped values to avoid invalid power operation
+        # Calculate taper with clipped values
         taper = np.power(sin_values, 0.5)
         
         # Apply tapering to make ends meet
