@@ -26,16 +26,16 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a crescent-shaped mask with balanced proportions"""
+    """Create a crescent-shaped mask positioned higher for better conjunctiva capture"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
         
-        # Get bbox center points with increased upward shift
+        # Get bbox center points with much larger upward shift
         x = max(0, int(pred['x'] - pred['width']/2))
-        y = max(0, int(pred['y'] - pred['height']/2)) - int(pred['height']/5)  # Increased upward shift
+        y = max(0, int(pred['y'] - pred['height']/2)) - int(pred['height']/3)  # Much larger upward shift
         
-        # Balanced proportions
+        # Keep successful proportions
         w = min(width - x, int(pred['width'] * 1.1))
         h = min(height - y, int(pred['height'] * 1.4))
         
@@ -46,20 +46,20 @@ def create_curved_mask(image, pred, class_name):
         num_points = 150
         x_points = np.linspace(x, x + w, num_points)
         
-        # Higher center point
-        center_y = y + h/4.2  # Slightly higher center
+        # Keep same relative center point but from higher base position
+        center_y = y + h/4.2
         amplitude = h/2.4
         
-        # Create curves with balanced separation
+        # Keep successful curve proportions
         angle = np.pi * (x_points - x) / w
         sin_values = np.sin(angle)
         sin_values = np.clip(sin_values, 0, 1)
         
-        # Matched proportions from successful anemic case
+        # Keep working proportions from anemic case
         upper_curve = center_y + amplitude * 1.5 * sin_values
         lower_curve = center_y + (amplitude * 0.6) * sin_values
         
-        # Slightly sharper tapering
+        # Keep successful tapering
         taper = np.power(sin_values, 0.45)
         
         # Apply tapering
