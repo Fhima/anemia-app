@@ -26,18 +26,18 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a crescent-shaped mask targeting the conjunctiva"""
+    """Create a crescent-shaped mask with consistent targeting across different lighting"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
         
-        # Get bbox center points
+        # Get bbox center points with slight upward shift
         x = max(0, int(pred['x'] - pred['width']/2))
-        y = max(0, int(pred['y'] - pred['height']/2))
+        y = max(0, int(pred['y'] - pred['height']/2)) - int(pred['height']/10)  # Shift detection box up slightly
         
-        # Keep same proportions but shift everything up
+        # Adjusted proportions
         w = min(width - x, int(pred['width'] * 1.1))
-        h = min(height - y, int(pred['height'] * 1.8))
+        h = min(height - y, int(pred['height'] * 1.6))  # Slightly reduced height
         
         if w <= 0 or h <= 0:
             return None, None
@@ -46,22 +46,21 @@ def create_curved_mask(image, pred, class_name):
         num_points = 150
         x_points = np.linspace(x, x + w, num_points)
         
-        # Shift center point much higher
-        center_y = y + h/6.0  # Changed from h/4.0 to h/6.0
-        # Adjust amplitude to maintain shape at new height
-        amplitude = h/2.2
+        # Higher center point and adjusted amplitude
+        center_y = y + h/5.5  # Even higher center point
+        amplitude = h/2.4     # Slightly adjusted amplitude
         
         # Create curves
         angle = np.pi * (x_points - x) / w
         sin_values = np.sin(angle)
         sin_values = np.clip(sin_values, 0, 1)
         
-        # Keep same curve proportions
-        upper_curve = center_y + amplitude * 1.6 * sin_values
-        lower_curve = center_y + (amplitude * 0.6) * sin_values
+        # More pronounced upper curve for better conjunctiva targeting
+        upper_curve = center_y + amplitude * 1.7 * sin_values  # More pronounced upper curve
+        lower_curve = center_y + (amplitude * 0.5) * sin_values  # Thinner lower curve
         
-        # Gentle tapering
-        taper = np.power(sin_values, 0.3)
+        # Enhanced tapering for consistent shape
+        taper = np.power(sin_values, 0.25)  # More gradual tapering
         
         # Apply tapering
         curve_diff = upper_curve - lower_curve
