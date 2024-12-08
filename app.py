@@ -26,7 +26,7 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a downward-pointing crescent-shaped mask matching conjunctiva anatomy"""
+    """Create a downward-pointing crescent-shaped mask with refined proportions"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
@@ -41,44 +41,47 @@ def create_curved_mask(image, pred, class_name):
             return None, None
             
         # Create points for the crescent shape
-        num_points = 100
+        num_points = 150  # Increased for smoother curves
         x_points = np.linspace(x, x + w, num_points)
         
-        # Parameters for crescent shape
-        center_y = y + h/2  # Center point
-        amplitude = h/2.5   # Reduced amplitude for less extreme curves
+        # Adjusted parameters for better proportions
+        center_y = y + h/2
+        amplitude = h/3.2  # Reduced amplitude for thinner crescent
         
-        # Create two downward-turning curves
+        # Create curves with adjusted parameters
         angle = np.pi * (x_points - x) / w
         sin_values = np.sin(angle)
-        
-        # Ensure sin_values are valid for power operation
         sin_values = np.clip(sin_values, 0, 1)
         
-        # Outer (upper) curve - now curves downward
-        outer_curve = center_y + amplitude * sin_values
+        # Upper curve with slightly more amplitude
+        upper_curve = center_y + amplitude * 1.2 * sin_values
         
-        # Inner (lower) curve - also curves downward but with less amplitude
-        inner_curve = center_y + (amplitude/2) * sin_values
+        # Lower curve with slightly less amplitude
+        lower_curve = center_y + (amplitude * 0.8) * sin_values
         
-        # Calculate taper with clipped values
-        taper = np.power(sin_values, 0.5)
+        # Enhanced tapering for more natural ends
+        taper = np.power(sin_values, 0.6)  # Adjusted power for smoother tapering
         
-        # Apply tapering to make ends meet
-        curve_diff = outer_curve - inner_curve
-        outer_curve = inner_curve + curve_diff * taper
+        # Apply tapering with adjusted ratios
+        curve_diff = upper_curve - lower_curve
+        upper_curve = lower_curve + curve_diff * taper
         
-        # Stack points and ensure they're within image bounds
+        # Add slight asymmetry for more natural look
+        asymmetry = np.sin(2 * np.pi * (x_points - x) / w) * (h/20)
+        upper_curve += asymmetry
+        lower_curve += asymmetry
+        
+        # Stack points with adjusted order
         points = np.vstack([
-            np.column_stack([x_points, outer_curve]),
-            np.column_stack([x_points[::-1], inner_curve[::-1]])
+            np.column_stack([x_points, upper_curve]),
+            np.column_stack([x_points[::-1], lower_curve[::-1]])
         ])
         
-        # Clip points to image boundaries
+        # Ensure points stay within image bounds
         points[:, 0] = np.clip(points[:, 0], 0, width - 1)
         points[:, 1] = np.clip(points[:, 1], 0, height - 1)
         
-        # Convert to integer coordinates
+        # Convert to proper format for drawing
         polygon_points = points.astype(np.float32)
         
         # Create mask
