@@ -173,48 +173,38 @@ def detect_conjunctiva(image):
         return None, None, None
 
 def preprocess_for_anemia_detection(image):
-    """Preprocess ROI with enhanced color normalization"""
+    """Improved preprocessing for more robust detection"""
     try:
-        # Ensure image is RGB
+        # Convert to RGB
         if image.mode != 'RGB':
             image = image.convert('RGB')
             
-        # Convert to array
-        img_array = np.array(image)
-        
         # Color normalization
+        img_array = np.array(image)
         lab = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
         l, a, b = cv2.split(lab)
         
         # Normalize L channel
-        l_norm = cv2.normalize(l, None, 0, 255, cv2.NORM_MINMAX)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        l_norm = clahe.apply(l)
         
-        # Adjust contrast of color channels
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
-        a_adj = clahe.apply(a)
-        b_adj = clahe.apply(b)
+        # Reconstruct image
+        lab_norm = cv2.merge([l_norm, a, b])
+        rgb_norm = cv2.cvtColor(lab_norm, cv2.COLOR_LAB2RGB)
         
-        # Merge channels
-        lab_adj = cv2.merge([l_norm, a_adj, b_adj])
-        normalized = cv2.cvtColor(lab_adj, cv2.COLOR_LAB2RGB)
+        # Resize
+        image = Image.fromarray(rgb_norm).resize((160, 160))
         
-        # Convert to PIL and resize
-        normalized_image = Image.fromarray(normalized)
-        image = normalized_image.resize((160, 160))
-        
-        # Convert to array and apply EfficientNet preprocessing
+        # Final preprocessing
         img_array = img_to_array(image)
         img_array = tf.cast(img_array, tf.float32)
         img_array = tf.keras.applications.efficientnet_v2.preprocess_input(img_array)
         
-        # Add batch dimension
-        img_array = np.expand_dims(img_array, axis=0)
-        
-        return img_array
+        return np.expand_dims(img_array, axis=0)
     except Exception as e:
         st.error(f"Error in preprocessing: {str(e)}")
         return None
-
+        
 def load_model():
     try:
         model_path = 'models/final_anemia_model.keras'
