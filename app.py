@@ -26,18 +26,22 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a crescent-shaped mask positioned higher for better conjunctiva capture"""
+    """Create a crescent-shaped mask with adaptive positioning based on confidence"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
         
-        # Get bbox center points with much larger upward shift
-        x = max(0, int(pred['x'] - pred['width']/2))
-        y = max(0, int(pred['y'] - pred['height']/2)) - int(pred['height']/3)  # Much larger upward shift
+        # Adjust base position based on detection confidence
+        # Lower confidence (like in non-anemic case) means we need to shift higher
+        base_shift = pred['height']/2 if pred['confidence'] > 0.7 else pred['height']/1.5
         
-        # Keep successful proportions
-        w = min(width - x, int(pred['width'] * 1.1))
-        h = min(height - y, int(pred['height'] * 1.4))
+        # Get bbox center points with adaptive shift
+        x = max(0, int(pred['x'] - pred['width']/2))
+        y = max(0, int(pred['y'] - pred['height']/2)) - int(base_shift)
+        
+        # Increased proportions for non-anemic case
+        w = min(width - x, int(pred['width'] * 1.2))  # Wider
+        h = min(height - y, int(pred['height'] * 1.6))  # Taller
         
         if w <= 0 or h <= 0:
             return None, None
@@ -46,21 +50,21 @@ def create_curved_mask(image, pred, class_name):
         num_points = 150
         x_points = np.linspace(x, x + w, num_points)
         
-        # Keep same relative center point but from higher base position
-        center_y = y + h/4.2
-        amplitude = h/2.4
+        # Adaptive center point based on confidence
+        center_y = y + h/(5.0 if pred['confidence'] < 0.7 else 4.2)
+        amplitude = h/2.2  # Slightly increased amplitude
         
-        # Keep successful curve proportions
+        # Create curves
         angle = np.pi * (x_points - x) / w
         sin_values = np.sin(angle)
         sin_values = np.clip(sin_values, 0, 1)
         
-        # Keep working proportions from anemic case
-        upper_curve = center_y + amplitude * 1.5 * sin_values
-        lower_curve = center_y + (amplitude * 0.6) * sin_values
+        # Adjusted curve proportions for larger mask
+        upper_curve = center_y + amplitude * 1.7 * sin_values  # More pronounced upper curve
+        lower_curve = center_y + (amplitude * 0.5) * sin_values  # Lower curve stays low
         
-        # Keep successful tapering
-        taper = np.power(sin_values, 0.45)
+        # Enhanced tapering for better ends
+        taper = np.power(sin_values, 0.35)  # Softer tapering
         
         # Apply tapering
         curve_diff = upper_curve - lower_curve
