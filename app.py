@@ -173,50 +173,31 @@ def detect_conjunctiva(image):
         return None, None, None
 
 def preprocess_for_anemia_detection(image):
-    """Preprocess ROI with minimal color distortion for anemia detection"""
+    """Preprocess ROI to match training data augmentation parameters"""
     try:
         # Convert to RGB
         if image.mode != 'RGB':
             image = image.convert('RGB')
             
-        # Color normalization with conservative parameters
+        # Convert to array
         img_array = np.array(image)
-        lab = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
-        l, a, b = cv2.split(lab)
         
-        # Very gentle CLAHE on L channel to preserve natural appearance
-        clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(4,4))
-        l_norm = clahe.apply(l)
+        # Color adjustments matching training augmentation
+        # RandomBrightness(0.12) equivalent
+        brightness_factor = 1.12  # Slight increase to match training
+        img_array = tf.image.adjust_brightness(img_array, delta=0.12)
         
-        # Subtle enhancement of a and b channels to preserve color information
-        a_scaled = cv2.normalize(a, None, 0, 255, cv2.NORM_MINMAX)
-        b_scaled = cv2.normalize(b, None, 0, 255, cv2.NORM_MINMAX)
+        # RandomContrast(0.18) equivalent
+        img_array = tf.image.adjust_contrast(img_array, contrast_factor=1.18)
         
-        # Blend original and enhanced color channels
-        alpha = 0.7  # Higher weight to original colors
-        a_adj = cv2.addWeighted(a, alpha, a_scaled, 1-alpha, 0)
-        b_adj = cv2.addWeighted(b, alpha, b_scaled, 1-alpha, 0)
+        # Maintain consistent size (160x160)
+        image = tf.image.resize(img_array, (160, 160), method='bilinear')
         
-        # Reconstruct image
-        lab_norm = cv2.merge([l_norm, a_adj, b_adj])
-        rgb_norm = cv2.cvtColor(lab_norm, cv2.COLOR_LAB2RGB)
+        # Convert to float32 and apply EfficientNet preprocessing
+        image = tf.cast(image, tf.float32)
+        image = tf.keras.applications.efficientnet_v2.preprocess_input(image)
         
-        # Resize while maintaining aspect ratio
-        image = Image.fromarray(rgb_norm)
-        image.thumbnail((160, 160), Image.Resampling.LANCZOS)
-        # Pad to square if needed
-        if image.size != (160, 160):
-            new_image = Image.new('RGB', (160, 160), (0, 0, 0))
-            new_image.paste(image, ((160 - image.size[0]) // 2,
-                                  (160 - image.size[1]) // 2))
-            image = new_image
-        
-        # Final preprocessing
-        img_array = img_to_array(image)
-        img_array = tf.cast(img_array, tf.float32)
-        img_array = tf.keras.applications.efficientnet_v2.preprocess_input(img_array)
-        
-        return np.expand_dims(img_array, axis=0)
+        return np.expand_dims(image, axis=0)
     except Exception as e:
         st.error(f"Error in preprocessing: {str(e)}")
         return None
