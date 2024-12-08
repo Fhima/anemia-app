@@ -31,45 +31,62 @@ def create_curved_mask(image, pred, class_name):
         img_array = np.array(image)
         height, width = img_array.shape[:2]
         
-        # Get bbox center points
-        x = int(pred['x'] - pred['width']/2)
-        y = int(pred['y'] - pred['height']/2)
-        w = int(pred['width'])
-        h = int(pred['height'])
+        # Get bbox center points and ensure they're valid
+        x = max(0, int(pred['x'] - pred['width']/2))
+        y = max(0, int(pred['y'] - pred['height']/2))
+        w = min(width - x, int(pred['width']))
+        h = min(height - y, int(pred['height']))
         
+        if w <= 0 or h <= 0:
+            return None, None
+            
         # Create points for the crescent shape
         num_points = 100
         x_points = np.linspace(x, x + w, num_points)
         
         # Parameters for crescent shape
-        center_y = y + h/1.5  # Move center point lower
+        center_y = y + h/1.5
         amplitude = h/2
         
         # Create two upward-turning curves
-        # Outer (lower) curve has larger amplitude
-        outer_curve = center_y - amplitude * np.sin(np.pi * (x_points - x) / w)
+        angle = np.pi * (x_points - x) / w
+        sin_values = np.sin(angle)
         
-        # Inner (upper) curve has smaller amplitude and is shifted up
-        inner_curve = center_y - h/3 - (amplitude/1.5) * np.sin(np.pi * (x_points - x) / w)
+        # Ensure sin_values are valid for power operation
+        sin_values = np.clip(sin_values, 0, 1)
         
-        # Add tapering at the ends
-        taper = np.power(np.sin(np.pi * (x_points - x) / w), 0.5)
+        # Outer (lower) curve
+        outer_curve = center_y - amplitude * sin_values
+        
+        # Inner (upper) curve
+        inner_curve = (center_y - h/3) - (amplitude/1.5) * sin_values
+        
+        # Calculate taper with clipped values to avoid invalid power operation
+        taper = np.power(sin_values, 0.5)
         
         # Apply tapering to make ends meet
         curve_diff = outer_curve - inner_curve
         outer_curve = inner_curve + curve_diff * taper
         
-        # Create polygon points
-        polygon_points = np.vstack([
+        # Stack points and ensure they're within image bounds
+        points = np.vstack([
             np.column_stack([x_points, outer_curve]),
             np.column_stack([x_points[::-1], inner_curve[::-1]])
         ])
+        
+        # Clip points to image boundaries
+        points[:, 0] = np.clip(points[:, 0], 0, width - 1)
+        points[:, 1] = np.clip(points[:, 1], 0, height - 1)
+        
+        # Convert to integer coordinates
+        polygon_points = points.astype(np.float32)
         
         # Create mask
         mask = np.zeros((height, width), dtype=np.uint8)
         cv2.fillPoly(mask, [polygon_points.astype(np.int32)], 255)
         
         return mask, polygon_points
+        
     except Exception as e:
         st.error(f"Error creating curved mask: {str(e)}")
         return None, None
