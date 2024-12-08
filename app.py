@@ -26,18 +26,18 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a crescent-shaped mask for optimal conjunctiva capture"""
+    """Create a crescent-shaped mask with proper thickness"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
         
-        # Get bbox center points with larger upward shift
+        # Get bbox center points with moderate upward shift
         x = max(0, int(pred['x'] - pred['width']/2))
-        y = max(0, int(pred['y'] - pred['height']/2)) - int(pred['height']/6)  # Further upward shift
+        y = max(0, int(pred['y'] - pred['height']/2)) - int(pred['height']/6)  # Keep same shift
         
-        # Thinner proportions
-        w = min(width - x, int(pred['width'] * 1.1))  # Slightly reduced width
-        h = min(height - y, int(pred['height'] * 1.3))  # Reduced height
+        # Wider proportions
+        w = min(width - x, int(pred['width'] * 1.1))
+        h = min(height - y, int(pred['height'] * 1.4))  # Slightly increased height
         
         if w <= 0 or h <= 0:
             return None, None
@@ -46,20 +46,20 @@ def create_curved_mask(image, pred, class_name):
         num_points = 150
         x_points = np.linspace(x, x + w, num_points)
         
-        # Higher center point with reduced amplitude
-        center_y = y + h/4.5  # Higher center
-        amplitude = h/3.0     # Reduced amplitude for thinner shape
+        # Keep higher center point but increase amplitude
+        center_y = y + h/4.5  # Keep same center
+        amplitude = h/2.4     # Increased amplitude for more thickness
         
-        # Create curves
+        # Create curves with increased separation
         angle = np.pi * (x_points - x) / w
         sin_values = np.sin(angle)
         sin_values = np.clip(sin_values, 0, 1)
         
-        # Adjusted curve proportions for thinner shape
-        upper_curve = center_y + amplitude * 1.4 * sin_values
-        lower_curve = center_y + (amplitude * 0.8) * sin_values
+        # More separated curves for thickness
+        upper_curve = center_y + amplitude * 1.6 * sin_values  # Increased multiplier
+        lower_curve = center_y + (amplitude * 0.5) * sin_values  # Decreased multiplier
         
-        # Gentler tapering
+        # Keep same tapering
         taper = np.power(sin_values, 0.4)
         
         # Apply tapering
