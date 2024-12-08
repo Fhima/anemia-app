@@ -173,27 +173,43 @@ def detect_conjunctiva(image):
         return None, None, None
 
 def preprocess_for_anemia_detection(image):
-    """Improved preprocessing for more robust detection"""
+    """Preprocess ROI with minimal color distortion for anemia detection"""
     try:
         # Convert to RGB
         if image.mode != 'RGB':
             image = image.convert('RGB')
             
-        # Color normalization
+        # Color normalization with conservative parameters
         img_array = np.array(image)
         lab = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
         l, a, b = cv2.split(lab)
         
-        # Normalize L channel
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        # Very gentle CLAHE on L channel to preserve natural appearance
+        clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(4,4))
         l_norm = clahe.apply(l)
         
+        # Subtle enhancement of a and b channels to preserve color information
+        a_scaled = cv2.normalize(a, None, 0, 255, cv2.NORM_MINMAX)
+        b_scaled = cv2.normalize(b, None, 0, 255, cv2.NORM_MINMAX)
+        
+        # Blend original and enhanced color channels
+        alpha = 0.7  # Higher weight to original colors
+        a_adj = cv2.addWeighted(a, alpha, a_scaled, 1-alpha, 0)
+        b_adj = cv2.addWeighted(b, alpha, b_scaled, 1-alpha, 0)
+        
         # Reconstruct image
-        lab_norm = cv2.merge([l_norm, a, b])
+        lab_norm = cv2.merge([l_norm, a_adj, b_adj])
         rgb_norm = cv2.cvtColor(lab_norm, cv2.COLOR_LAB2RGB)
         
-        # Resize
-        image = Image.fromarray(rgb_norm).resize((160, 160))
+        # Resize while maintaining aspect ratio
+        image = Image.fromarray(rgb_norm)
+        image.thumbnail((160, 160), Image.Resampling.LANCZOS)
+        # Pad to square if needed
+        if image.size != (160, 160):
+            new_image = Image.new('RGB', (160, 160), (0, 0, 0))
+            new_image.paste(image, ((160 - image.size[0]) // 2,
+                                  (160 - image.size[1]) // 2))
+            image = new_image
         
         # Final preprocessing
         img_array = img_to_array(image)
