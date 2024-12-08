@@ -171,25 +171,36 @@ def detect_conjunctiva(image):
         return None, None, None
 
 def preprocess_for_anemia_detection(image):
-    """Preprocess ROI to exactly match training data characteristics"""
+    """Preprocess ROI with enhanced color normalization"""
     try:
         # Ensure image is RGB
         if image.mode != 'RGB':
             image = image.convert('RGB')
             
-        # First crop to remove any potential black borders
+        # Convert to array
         img_array = np.array(image)
-        mask = np.any(img_array != 0, axis=2)
-        coords = np.argwhere(mask)
-        y_min, x_min = coords.min(axis=0)
-        y_max, x_max = coords.max(axis=0)
-        cropped_array = img_array[y_min:y_max+1, x_min:x_max+1]
         
-        # Convert back to PIL and resize
-        cropped_image = Image.fromarray(cropped_array)
-        image = cropped_image.resize((160, 160))
+        # Color normalization
+        lab = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
+        l, a, b = cv2.split(lab)
         
-        # Convert to array and preprocess
+        # Normalize L channel
+        l_norm = cv2.normalize(l, None, 0, 255, cv2.NORM_MINMAX)
+        
+        # Adjust contrast of color channels
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+        a_adj = clahe.apply(a)
+        b_adj = clahe.apply(b)
+        
+        # Merge channels
+        lab_adj = cv2.merge([l_norm, a_adj, b_adj])
+        normalized = cv2.cvtColor(lab_adj, cv2.COLOR_LAB2RGB)
+        
+        # Convert to PIL and resize
+        normalized_image = Image.fromarray(normalized)
+        image = normalized_image.resize((160, 160))
+        
+        # Convert to array and apply EfficientNet preprocessing
         img_array = img_to_array(image)
         img_array = tf.cast(img_array, tf.float32)
         img_array = tf.keras.applications.efficientnet_v2.preprocess_input(img_array)
