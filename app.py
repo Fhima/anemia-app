@@ -26,7 +26,7 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a crescent-shaped mask with adjusted center point and proportions"""
+    """Create a crescent-shaped mask with higher center point"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
@@ -34,8 +34,8 @@ def create_curved_mask(image, pred, class_name):
         # Get bbox center points with adjusted dimensions
         x = max(0, int(pred['x'] - pred['width']/2))
         y = max(0, int(pred['y'] - pred['height']/2))
-        w = min(width - x, int(pred['width'] * 0.9))  # Slightly reduced width
-        h = min(height - y, int(pred['height'] * 1.5))  # Keep increased height
+        w = min(width - x, int(pred['width'] * 0.9))  # Keep width reduction
+        h = min(height - y, int(pred['height'] * 1.5))  # Keep height increase
         
         if w <= 0 or h <= 0:
             return None, None
@@ -44,20 +44,20 @@ def create_curved_mask(image, pred, class_name):
         num_points = 150
         x_points = np.linspace(x, x + w, num_points)
         
-        # Move center point higher
-        center_y = y + h/2.2  # Shifted up from h/2 to h/2.2
-        amplitude = h/2.6  # Slightly adjusted amplitude
+        # Move center point even higher
+        center_y = y + h/2.5  # Changed from 2.2 to 2.5 for higher center
+        amplitude = h/2.6  # Keep same amplitude
         
         # Create curves
         angle = np.pi * (x_points - x) / w
         sin_values = np.sin(angle)
         sin_values = np.clip(sin_values, 0, 1)
         
-        # Create upper and lower curves with adjusted proportions
+        # Keep same curve proportions
         upper_curve = center_y + amplitude * 1.3 * sin_values
         lower_curve = center_y + (amplitude * 0.7) * sin_values
         
-        # Tapering
+        # Keep same tapering
         taper = np.power(sin_values, 0.4)
         
         # Apply tapering
