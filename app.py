@@ -26,18 +26,18 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a crescent-shaped mask optimized for both anemic and non-anemic cases"""
+    """Create a crescent-shaped mask for optimal conjunctiva capture"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
         
         # Get bbox center points with larger upward shift
         x = max(0, int(pred['x'] - pred['width']/2))
-        y = max(0, int(pred['y'] - pred['height']/2)) - int(pred['height']/8)  # Increased upward shift
+        y = max(0, int(pred['y'] - pred['height']/2)) - int(pred['height']/6)  # Further upward shift
         
-        # Wider, more balanced proportions
-        w = min(width - x, int(pred['width'] * 1.2))  # Wider mask
-        h = min(height - y, int(pred['height'] * 1.4))  # Slightly reduced height
+        # Thinner proportions
+        w = min(width - x, int(pred['width'] * 1.1))  # Slightly reduced width
+        h = min(height - y, int(pred['height'] * 1.3))  # Reduced height
         
         if w <= 0 or h <= 0:
             return None, None
@@ -46,21 +46,21 @@ def create_curved_mask(image, pred, class_name):
         num_points = 150
         x_points = np.linspace(x, x + w, num_points)
         
-        # Higher center point with balanced amplitude
-        center_y = y + h/5.0  # Adjusted center point
-        amplitude = h/2.8     # Reduced amplitude for better proportions
+        # Higher center point with reduced amplitude
+        center_y = y + h/4.5  # Higher center
+        amplitude = h/3.0     # Reduced amplitude for thinner shape
         
-        # Create curves with more balanced proportions
+        # Create curves
         angle = np.pi * (x_points - x) / w
         sin_values = np.sin(angle)
         sin_values = np.clip(sin_values, 0, 1)
         
-        # More balanced curve proportions
-        upper_curve = center_y + amplitude * 1.5 * sin_values  # Slightly reduced upper multiplier
-        lower_curve = center_y + (amplitude * 0.7) * sin_values  # Increased lower multiplier
+        # Adjusted curve proportions for thinner shape
+        upper_curve = center_y + amplitude * 1.4 * sin_values
+        lower_curve = center_y + (amplitude * 0.8) * sin_values
         
-        # More balanced tapering
-        taper = np.power(sin_values, 0.35)
+        # Gentler tapering
+        taper = np.power(sin_values, 0.4)
         
         # Apply tapering
         curve_diff = upper_curve - lower_curve
