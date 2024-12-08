@@ -34,8 +34,8 @@ def create_curved_mask(image, pred, class_name):
         # Get bbox center points with adjusted dimensions
         x = max(0, int(pred['x'] - pred['width']/2))
         y = max(0, int(pred['y'] - pred['height']/2))
-        w = min(width - x, int(pred['width'] * 0.9))  # Keep width reduction
-        h = min(height - y, int(pred['height'] * 1.5))  # Keep height increase
+        w = min(width - x, int(pred['width'] * 0.9))
+        h = min(height - y, int(pred['height'] * 1.5))
         
         if w <= 0 or h <= 0:
             return None, None
@@ -45,8 +45,8 @@ def create_curved_mask(image, pred, class_name):
         x_points = np.linspace(x, x + w, num_points)
         
         # Move center point even higher
-        center_y = y + h/2.5  # Changed from 2.2 to 2.5 for higher center
-        amplitude = h/2.6  # Keep same amplitude
+        center_y = y + h/3.0  # Changed from 2.5 to 3.0 for higher center
+        amplitude = h/2.6
         
         # Create curves
         angle = np.pi * (x_points - x) / w
