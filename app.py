@@ -26,7 +26,7 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a crescent-shaped mask with much higher center point"""
+    """Create a crescent-shaped mask with even higher center point"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
@@ -44,18 +44,18 @@ def create_curved_mask(image, pred, class_name):
         num_points = 150
         x_points = np.linspace(x, x + w, num_points)
         
-        # Move center point much higher
-        center_y = y + h/4.0  # Changed from 3.0 to 4.0 for much higher center
-        amplitude = h/2.6
+        # Move center point even higher
+        center_y = y + h/5.0  # Changed from 4.0 to 5.0 for even higher center
+        amplitude = h/2.4     # Slightly increased amplitude
         
         # Create curves
         angle = np.pi * (x_points - x) / w
         sin_values = np.sin(angle)
         sin_values = np.clip(sin_values, 0, 1)
         
-        # Keep same curve proportions
-        upper_curve = center_y + amplitude * 1.3 * sin_values
-        lower_curve = center_y + (amplitude * 0.7) * sin_values
+        # Adjusted curve proportions slightly
+        upper_curve = center_y + amplitude * 1.4 * sin_values  # Increased upper multiplier
+        lower_curve = center_y + (amplitude * 0.6) * sin_values  # Decreased lower multiplier
         
         # Keep same tapering
         taper = np.power(sin_values, 0.4)
