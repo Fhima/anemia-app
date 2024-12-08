@@ -26,7 +26,7 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a crescent-shaped mask with balanced proportions"""
+    """Create a crescent-shaped mask with better proportions"""
     try:
         img_array = np.array(image)
         height, width = img_array.shape[:2]
@@ -35,12 +35,9 @@ def create_curved_mask(image, pred, class_name):
         x = max(0, int(pred['x'] - pred['width']/2))
         y = max(0, int(pred['y'] - pred['height']/2))
         
-        # More moderate scaling factor
-        scale_factor = min(1.2, min(width, height) / 320.0)  # Less aggressive scaling
-        
-        # Apply moderate scaling to dimensions
-        w = min(width - x, int(pred['width'] * 0.9 * scale_factor))
-        h = min(height - y, int(pred['height'] * 1.5 * scale_factor))
+        # More balanced proportions
+        w = min(width - x, int(pred['width'] * 1.1))  # Slightly wider
+        h = min(height - y, int(pred['height'] * 1.8))  # Taller
         
         if w <= 0 or h <= 0:
             return None, None
@@ -49,21 +46,21 @@ def create_curved_mask(image, pred, class_name):
         num_points = 150
         x_points = np.linspace(x, x + w, num_points)
         
-        # Keep our good parameters from before
-        center_y = y + h/5.0
-        amplitude = h/2.2
+        # Adjusted parameters for better coverage
+        center_y = y + h/4.0  # Higher center point
+        amplitude = h/2.0  # Larger amplitude
         
         # Create curves
         angle = np.pi * (x_points - x) / w
         sin_values = np.sin(angle)
         sin_values = np.clip(sin_values, 0, 1)
         
-        # Create upper and lower curves
-        upper_curve = center_y + amplitude * 1.5 * sin_values
-        lower_curve = center_y + (amplitude * 0.5) * sin_values
+        # Adjusted curve proportions
+        upper_curve = center_y + amplitude * 1.6 * sin_values  # More pronounced upper curve
+        lower_curve = center_y + (amplitude * 0.6) * sin_values  # Maintained lower curve
         
-        # Tapering
-        taper = np.power(sin_values, 0.35)
+        # Gentler tapering
+        taper = np.power(sin_values, 0.3)
         
         # Apply tapering
         curve_diff = upper_curve - lower_curve
