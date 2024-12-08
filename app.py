@@ -26,9 +26,8 @@ def load_roboflow():
 detector_model = load_roboflow()
 
 def create_curved_mask(image, pred, class_name):
-    """Create a curved mask following the conjunctiva contour"""
+    """Create a curved mask following the natural conjunctiva anatomy"""
     try:
-        # Convert to numpy array
         img_array = np.array(image)
         height, width = img_array.shape[:2]
         
@@ -38,30 +37,45 @@ def create_curved_mask(image, pred, class_name):
         w = int(pred['width'])
         h = int(pred['height'])
         
-        # Create more pronounced crescent shape points
-        num_points = 100
+        # Create points for the complex shape
+        num_points = 200  # More points for better detail
         x_points = np.linspace(x, x + w, num_points)
         
-        # Bottom curve (more pronounced curve)
-        curve_height_bottom = h/2.5  # Increased curve height
-        bottom_curve = y + h/2 + curve_height_bottom * np.sin(np.pi * (x_points - x) / w)
+        # Main bottom curve (follows lower fold)
+        bottom_curve = y + h/2 + h/3 * np.sin(np.pi * (x_points - x) / w)
         
-        # Top curve (much flatter)
-        curve_height_top = h/5  # Reduced curve height for top
-        top_curve = y + h/2 - curve_height_top * np.sin(np.pi * (x_points - x) / w)
+        # Add anatomical detail points
+        detail_points = []
         
-        # Taper the ends more
-        taper = np.sqrt(np.sin(np.pi * (x_points - x) / w))  # Creates more pointed ends
-        bottom_curve = bottom_curve * taper
-        top_curve = top_curve * taper
+        # Add lower fold detail
+        fold_x = np.linspace(x + w*0.2, x + w*0.8, 8)
+        fold_y = bottom_curve[int(num_points*0.2):int(num_points*0.8):int(num_points*0.6/8)]
+        fold_amplitude = h/8
+        for i, (fx, fy) in enumerate(zip(fold_x, fold_y)):
+            if i % 2 == 0:
+                detail_points.append([fx, fy - fold_amplitude])
+            else:
+                detail_points.append([fx, fy])
+                
+        # Create complete polygon points
+        main_points = np.column_stack([x_points, bottom_curve])
+        detail_points = np.array(detail_points)
         
-        # Create polygon points for mask
-        polygon_points = np.vstack([
-            np.column_stack([x_points, bottom_curve]),
-            np.column_stack([x_points[::-1], top_curve[::-1]])
+        # Combine main curve with anatomical details
+        points_bottom = np.vstack([
+            main_points[:int(num_points*0.2)],
+            detail_points,
+            main_points[int(num_points*0.8):]
         ])
         
-        # Create binary mask
+        # Top curve (follows upper fold)
+        top_y = y + h/4
+        top_points = np.column_stack([x_points[::-1], np.full_like(x_points, top_y)])
+        
+        # Combine all points
+        polygon_points = np.vstack([points_bottom, top_points])
+        
+        # Create and fill mask
         mask = np.zeros((height, width), dtype=np.uint8)
         cv2.fillPoly(mask, [polygon_points.astype(np.int32)], 255)
         
