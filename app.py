@@ -201,16 +201,49 @@ def preprocess_for_anemia_detection(image):
     except Exception as e:
         st.error(f"Error in preprocessing: {str(e)}")
         return None
-        
+
+@st.cache_resource
 def load_model():
+    """Download and load the model from Google Drive"""
     try:
         model_path = 'models/final_anemia_model.keras'
+        
+        # Create models directory if it doesn't exist
+        os.makedirs('models', exist_ok=True)
+        
+        # Only download if model doesn't exist
         if not os.path.exists(model_path):
-            st.error("Model file not found")
-            return None
+            # Google Drive file ID
+            file_id = "1_0laYs2WeMqeDqaPPHmYzgUtxoKLZNfG"
+            
+            def get_confirm_token(response):
+                for key, value in response.cookies.items():
+                    if key.startswith('download_warning'):
+                        return value
+                return None
+
+            def save_response_content(response, destination):
+                CHUNK_SIZE = 32768
+                with open(destination, "wb") as f:
+                    for chunk in response.iter_content(CHUNK_SIZE):
+                        if chunk:
+                            f.write(chunk)
+
+            with st.spinner('Downloading model file...'):
+                URL = "https://drive.google.com/uc?export=download"
+                session = requests.Session()
+                response = session.get(URL, params={'id': file_id}, stream=True)
+                
+                token = get_confirm_token(response)
+                if token:
+                    params = {'id': file_id, 'confirm': token}
+                    response = session.get(URL, params=params, stream=True)
+
+                save_response_content(response, model_path)
+                
         return tf.keras.models.load_model(model_path)
     except Exception as e:
-        st.error("Error loading anemia detection model")
+        st.error(f"Error loading model: {str(e)}")
         return None
 
 def predict_anemia(model, image):

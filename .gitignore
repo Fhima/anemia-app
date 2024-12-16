@@ -1,4 +1,3 @@
-models/*.keras
 temp_image.jpg
-__pycache__/
+**pycache**/
 *.pyc
