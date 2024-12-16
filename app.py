@@ -206,33 +206,38 @@ def preprocess_for_anemia_detection(image):
 def load_model():
     """Download and load the model from Google Drive"""
     try:
-        model_path = 'models/final_anemia_model.keras'
-        
         # Create models directory if it doesn't exist
-        os.makedirs('models', exist_ok=True)
+        model_dir = 'models'
+        model_path = os.path.join(model_dir, 'final_anemia_model.keras')
         
-        # Only download if model doesn't exist
+        # Create directory if it doesn't exist
+        os.makedirs(model_dir, exist_ok=True)
+        
+        # Download model if it doesn't exist
         if not os.path.exists(model_path):
             import gdown
+            st.info("Downloading model from Google Drive...")
             
-            # Your Google Drive file ID
             file_id = "1_0laYs2WeMqeDqaPPHmYzgUtxoKLZNfG"
-            output = model_path
+            url = f'https://drive.google.com/uc?id={file_id}'
             
-            with st.spinner('Downloading model file...'):
-                # Download file from Google Drive
-                url = f'https://drive.google.com/uc?id={file_id}'
-                gdown.download(url, output, quiet=False)
-                
-                if not os.path.exists(model_path):
-                    st.error('Failed to download model file')
+            try:
+                gdown.download(url, model_path, quiet=False)
+                if os.path.exists(model_path):
+                    st.success("Model downloaded successfully!")
+                else:
+                    st.error("Failed to download model")
                     return None
-                
+            except Exception as e:
+                st.error(f"Error downloading model: {str(e)}")
+                return None
+
         # Load the model
         if os.path.exists(model_path):
-            return tf.keras.models.load_model(model_path)
+            model = tf.keras.models.load_model(model_path)
+            return model
         else:
-            st.error('Model file not found after download attempt')
+            st.error("Model file not found")
             return None
             
     except Exception as e:
