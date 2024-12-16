@@ -212,46 +212,38 @@ def load_model():
         st.info(f"Checking for model directory at: {model_dir}")
         os.makedirs(model_dir, exist_ok=True)
         
-        if not os.path.exists(model_path):
-            import gdown
-            st.info("Model file not found locally, starting download...")
-            
-            # Use the shareable link
-            url = "https://drive.google.com/file/d/1_0laYs2WeMqeDqaPPHmYzgUtxoKLZNfG/view?usp=drive_link"
-            
-            try:
-                st.info(f"Attempting to download from: {url}")
-                # Try direct download with gdown
-                output = gdown.download(url, model_path, fuzzy=True)
-                st.write(f"Download output: {output}")
-                
-                if os.path.exists(model_path):
-                    st.success(f"Model downloaded successfully to {model_path}")
-                    st.info(f"File size: {os.path.getsize(model_path)} bytes")
-                else:
-                    st.error("Download completed but file not found")
-                    st.write("Directory contents:", os.listdir(model_dir))
-                    return None
-                    
-            except Exception as download_error:
-                st.error(f"Download error: {str(download_error)}")
-                return None
-        else:
-            st.info(f"Found existing model at {model_path}")
+        # Always try to download the model
+        import gdown
+        st.info("Starting model download...")
         
-        if os.path.exists(model_path):
-            st.info("Attempting to load model...")
-            model = tf.keras.models.load_model(model_path)
-            st.success("Model loaded successfully!")
-            return model
-        else:
-            st.error(f"Model file still not found at {model_path}")
-            if os.path.exists(model_dir):
-                st.write("Contents of models directory:", os.listdir(model_dir))
+        try:
+            # Format the Google Drive URL correctly
+            file_id = "1_0laYs2WeMqeDqaPPHmYzgUtxoKLZNfG"
+            url = f"https://drive.google.com/uc?id={file_id}"
+            
+            st.info(f"Downloading model from Google Drive...")
+            output = gdown.download(url, model_path, quiet=False)
+            
+            if output is not None and os.path.exists(model_path):
+                st.success(f"Model downloaded successfully! File size: {os.path.getsize(model_path)} bytes")
+                try:
+                    model = tf.keras.models.load_model(model_path)
+                    st.success("Model loaded successfully!")
+                    return model
+                except Exception as load_error:
+                    st.error(f"Error loading downloaded model: {str(load_error)}")
+                    return None
+            else:
+                st.error("Failed to download model")
+                return None
+                
+        except Exception as download_error:
+            st.error(f"Download error: {str(download_error)}")
+            st.error(f"Full error: {traceback.format_exc()}")
             return None
             
     except Exception as e:
-        st.error(f"Error loading model: {str(e)}")
+        st.error(f"Error in model loading process: {str(e)}")
         import traceback
         st.error(f"Full error traceback:\n{traceback.format_exc()}")
         return None
