@@ -205,52 +205,29 @@ def preprocess_for_anemia_detection(image):
 @st.cache_resource
 def load_model():
     """Download and load the model from Google Drive"""
-    import traceback
-    
     try:
         model_dir = 'models'
         model_path = os.path.join(model_dir, 'final_anemia_model.keras')
         
-        st.info(f"Checking for model directory at: {model_dir}")
+        # Create models directory if it doesn't exist
         os.makedirs(model_dir, exist_ok=True)
         
-        import gdown
-        st.info("Starting model download...")
-        
-        try:
-            url = "https://drive.google.com/file/d/1_0laYs2WeMqeDqaPPHmYzgUtxoKLZNfG/view?usp=sharing"
-            st.info(f"Attempting download from: {url}")
+        # Download model if needed
+        if not os.path.exists(model_path):
+            import gdown
             
-            output = gdown.download(
-                url, 
-                output=model_path,
-                quiet=False,
-                fuzzy=True
-            )
-            
-            if output is not None and os.path.exists(model_path):
-                file_size = os.path.getsize(model_path)
-                st.success(f"Model downloaded! Size: {file_size} bytes")
+            with st.spinner('Loading model resources...'):
+                url = "https://drive.google.com/file/d/1_0laYs2WeMqeDqaPPHmYzgUtxoKLZNfG/view?usp=sharing"
+                output = gdown.download(url, output=model_path, quiet=True, fuzzy=True)
                 
-                if file_size > 0:
-                    model = tf.keras.models.load_model(model_path)
-                    st.success("Model loaded successfully!")
-                    return model
-                else:
-                    st.error("Downloaded file is empty")
+                if not output or not os.path.exists(model_path):
+                    st.error("Error loading model resources")
                     return None
-                    
-            st.error("Download failed - file not found")
-            return None
-                
-        except Exception as download_error:
-            st.error(f"Download failed: {str(download_error)}")
-            st.error(f"Details:\n{traceback.format_exc()}")
-            return None
+        
+        return tf.keras.models.load_model(model_path)
             
     except Exception as e:
-        st.error(f"Process error: {str(e)}")
-        st.error(f"Details:\n{traceback.format_exc()}")
+        st.error("Error loading model resources")
         return None
 
 def predict_anemia(model, image):
