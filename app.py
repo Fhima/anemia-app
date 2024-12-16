@@ -213,35 +213,28 @@ def load_model():
         
         # Only download if model doesn't exist
         if not os.path.exists(model_path):
-            # Google Drive file ID
-            file_id = "1_0laYs2WeMqeDqaPPHmYzgUtxoKLZNfG"
+            import gdown
             
-            def get_confirm_token(response):
-                for key, value in response.cookies.items():
-                    if key.startswith('download_warning'):
-                        return value
-                return None
-
-            def save_response_content(response, destination):
-                CHUNK_SIZE = 32768
-                with open(destination, "wb") as f:
-                    for chunk in response.iter_content(CHUNK_SIZE):
-                        if chunk:
-                            f.write(chunk)
-
+            # Your Google Drive file ID
+            file_id = "1_0laYs2WeMqeDqaPPHmYzgUtxoKLZNfG"
+            output = model_path
+            
             with st.spinner('Downloading model file...'):
-                URL = "https://drive.google.com/uc?export=download"
-                session = requests.Session()
-                response = session.get(URL, params={'id': file_id}, stream=True)
+                # Download file from Google Drive
+                url = f'https://drive.google.com/uc?id={file_id}'
+                gdown.download(url, output, quiet=False)
                 
-                token = get_confirm_token(response)
-                if token:
-                    params = {'id': file_id, 'confirm': token}
-                    response = session.get(URL, params=params, stream=True)
-
-                save_response_content(response, model_path)
+                if not os.path.exists(model_path):
+                    st.error('Failed to download model file')
+                    return None
                 
-        return tf.keras.models.load_model(model_path)
+        # Load the model
+        if os.path.exists(model_path):
+            return tf.keras.models.load_model(model_path)
+        else:
+            st.error('Model file not found after download attempt')
+            return None
+            
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
         return None
