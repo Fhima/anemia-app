@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw
 from tensorflow.keras.preprocessing.image import img_to_array
 import requests
 import cv2
+from config import Config
 
 # Initialize session state
 if 'prediction_made' not in st.session_state:
@@ -18,9 +19,10 @@ if 'conjunctiva_region' not in st.session_state:
 # Initialize Roboflow
 @st.cache_resource
 def load_roboflow():
+    Config.validate_config()
     return {
-        "api_url": "https://detect.roboflow.com",
-        "api_key": "g6W2V0dcNuMVTkygIv9G"
+        "api_url": Config.ROBOFLOW_API_URL,
+        "api_key": Config.ROBOFLOW_API_KEY
     }
 
 detector_model = load_roboflow()
