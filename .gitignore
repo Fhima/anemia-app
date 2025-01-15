@@ -1,3 +1,4 @@
 temp_image.jpg
 **pycache**/
 *.pyc
+.env
