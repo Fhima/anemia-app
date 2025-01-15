@@ -1,4 +1,21 @@
-temp_image.jpg
-**pycache**/
-*.pyc
+# Environment variables
 .env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Model files
+models/
+
+# VS Code
+.vscode/
+
+# Streamlit
+.streamlit/
